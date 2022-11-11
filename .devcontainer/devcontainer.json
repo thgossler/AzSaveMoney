@@ -13,11 +13,9 @@
 		}
 	},
 
-	"postCreateCommand": "sudo chsh vscode -s \"$(which pwsh)\"",
-
-	"postStartCommand": [
-		"Install-Module -Name Az -Force",
-		"Install-Module -Name Az.ResourceGraph -Force"
+	"postCreateCommand": [
+		"pwsh -c 'Install-Module -Name Az -Force'",
+		"pwsh -c 'Install-Module -Name Az.ResourceGraph -Force'"
 	],
 
 	// Configure tool-specific properties.
