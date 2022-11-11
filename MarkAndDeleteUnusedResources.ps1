@@ -39,8 +39,9 @@ The script implements function hooks named for each supported resource
 type/kind.  Function  hooks  determine   for a specific resource which
 action   shall  be  taken.   The    naming  convention for    hooks is
 "Test-ResourceActionHook-<resourceType>[-<resourceKind>]". New   hooks
-can easily be added by implementing a new function. New  hooks  should
-be inserted after the marker [ADD NEW HOOKS HERE].
+can  easily  be added  by  implementing  a  new function  and  will be 
+discovered  and  called automatically. New  hooks  should be  inserted 
+after the marker [ADD NEW HOOKS HERE].
 
 There are  multiple tags  which are set  when a resource  is marked as 
 subject for deletion (tag names are configurable):
@@ -53,10 +54,11 @@ script ran and the tag was created:
 - "suspected": resource marked as subject for deletion
 - "suspectedSubResources": at least one  sub resource  is subject  for
   deletion
-As  long  as the tag  "SubjectForDeletion"  has a value  starting with
-"suspected" it is overwritten in the next run.  The  tag value  can be
-updated  to  one of the  following values  in order to  influence  the
-script behavior in subsequent runs (see below).
+As long as  the tag  `SubjectForDeletion`  has a value  starting  with 
+`suspected...`  the resource  is reevaluated  in every run and the tag 
+value is updated (overwritten). You can update the tag value to one of
+the following  values  in order to  influence  the script behavior  in 
+subsequent runs (see below).
 
 The following example process is suggested to for large organizations:
 1. RUN script regularly

@@ -1,6 +1,30 @@
-# AzSaveMoney
+[![Contributors][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![MIT License][license-shield]][license-url]
 
-Clean-up unused resources and save money in your Azure environment.
+<!-- PROJECT LOGO -->
+<br />
+<div align="center">
+  <a href="https://github.com/thgossler/AzSaveMoney">
+    <img src="images/logo.png" alt="Logo" width="80" height="80">
+  </a>
+
+  <h3 align="center">AzSaveMoney</h3>
+
+  <p align="center">
+    Clean-up unused resources and save money in your Azure environment.
+    <br />
+    <a href="https://github.com/thgossler/AzSaveMoney/issues">Report Bug</a>
+    ·
+    <a href="https://github.com/thgossler/AzSaveMoney/issues">Request Feature</a>
+    ·
+    <a href="https://github.com/thgossler/AzSaveMoney#contributing">Contribute</a>
+  </p>
+</div>
+
+# Overview
 
 The script [`MarkAndDeleteUnusedResources.ps1`](MarkAndDeleteUnusedResources.ps1) checks each Azure resource (group) across all subscriptions and eventually tags it as subject for deletion or (in some cases) deletes it automatically (after confirmation, configurable). Based on the tag's value suspect resources can be confirmed or rejected as subject for deletion and will be considered accordingly in subsequent runs.
 
@@ -20,10 +44,10 @@ Get-Help .\MarkAndDeleteUnusedResources.ps1 -Detailed
 ```
 
 Example output:
-![Example output](Screenshot.png)
+![Example output](images/Screenshot.png)
 
 Example tags:
-![Example tags](Screenshot2.png)
+![Example tags](images/Screenshot2.png)
 
 This script was primarily written to clean-up large Azure environments and potentially save money along the way. It was inspired by the project [`itoleck/AzureSaveMoney`](https://github.com/itoleck/AzureSaveMoney).
 
@@ -34,7 +58,7 @@ The default values for some parameters can be specified in a config file named `
 The script implements function hooks named for each supported resource type/kind. Function hooks determine for a specific resource which action shall be taken. The naming convention for hooks is `Test-ResourceActionHook-<resourceType>[-<resourceKind>]`. New hooks can easily be added by implementing a new function and will be discovered and called automatically. New hooks should be inserted after the marker `[ADD NEW HOOKS HERE]`.
 
 Example hook function:
-![Example hook function](Screenshot3.png)
+![Example hook function](images/Screenshot3.png)
 
 There are multiple tags which are set when a resource is marked as  subject for deletion (tag names are configurable):
 `SubjectForDeletion`,
@@ -46,13 +70,13 @@ The `SubjectForDeletion` tag has one of the following values after the script ra
 - `suspected`: resource marked as subject for deletion
 - `suspectedSubResources`: at least one sub resource is subject for deletion
 
-As long as the tag `SubjectForDeletion` has a value starting with `suspected` it is overwritten in the next run. The tag value can be updated to one of the following values in order to influence the script behavior in subsequent runs (see below).
+As long as the tag `SubjectForDeletion` has a value starting with `suspected...` the resource is reevaluated in every run and the tag value is updated (overwritten). You can update the tag value to one of the following values in order to influence the script behavior in subsequent runs (see below).
 
-The following example process is suggested to for large organizations:
+The following example process is suggested for large organizations:
 
 1. **RUN** the script regularly
-2. **ALERT** `suspected` or `suspectedSubResources` resources to owners
-3. **MANUAL RESOLUTION** by owners by reviewing and changing the tag value of `SubjectForDeletion` to one of the following values (case-sensitive!):
+2. **ALERT** `suspected` or `suspectedSubResources` resources to resource owners
+3. **MANUAL RESOLUTION** by owners by reviewing and changing the `SubjectForDeletion` tag value to one of the following predefined terms (case-sensitive!):
    - `rejected`: Resource is needed and shall NOT be deleted (this status will not be overwritten in subsequent runs for 6 months after `SubjectForDeletion-FindingDate`)
    - `confirmed`: Resource shall be deleted (will be automatically deleted in the next run)
 4. **AUTO-DELETION/REEVALUATION**: Subsequent script runs will check all resources again with the following special handling for status:
@@ -82,3 +106,16 @@ Distributed under the MIT License. See [`LICENSE`](https://github.com/thgossler/
 
 Thomas Gossler - [@thgossler](https://twitter.com/thgossler)<br/>
 Project Link: [https://github.com/thgossler/AzSaveMoney](https://github.com/thgossler/AzSaveMoney)
+
+<!-- MARKDOWN LINKS & IMAGES -->
+<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
+[contributors-shield]: https://img.shields.io/github/contributors/thgossler/AzSaveMoney.svg?style=for-the-badge
+[contributors-url]: https://github.com/thgossler/AzSaveMoney/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/thgossler/AzSaveMoney.svg?style=for-the-badge
+[forks-url]: https://github.com/thgossler/AzSaveMoney/network/members
+[stars-shield]: https://img.shields.io/github/stars/thgossler/AzSaveMoney.svg?style=for-the-badge
+[stars-url]: https://github.com/thgossler/AzSaveMoney/stargazers
+[issues-shield]: https://img.shields.io/github/issues/thgossler/AzSaveMoney.svg?style=for-the-badge
+[issues-url]: https://github.com/thgossler/AzSaveMoney/issues
+[license-shield]: https://img.shields.io/github/license/thgossler/AzSaveMoney.svg?style=for-the-badge
+[license-url]: https://github.com/thgossler/AzSaveMoney/blob/master/LICENSE
