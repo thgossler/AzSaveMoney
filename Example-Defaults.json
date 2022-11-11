@@ -1,0 +1,12 @@
+{
+  "DirectoryId": "aebb2cce-a909-43d6-8afb-2d69bbef1ff8",
+  "AzEnvironment": "AzureChinaCloud",
+  "CentralAuditLogAnalyticsWorkspaceId": "2ced2357-2523-413a-bdeb-a3090c38cfda",
+  "MinimumResourceAgeInDaysForChecking": 7,
+  "DeleteSuspectedResourcesAndGroupsAfterDays": 30,
+  "SubscriptionIdsToProcess": [
+    "4177fa69-64a1-4962-907c-189923360d01",
+    "c4fbdaa9-8258-4423-9ba4-cd96dd53a23d"
+  ],
+  "DocumentationUrl": "https://dev.azure.com/myorg/myproject/_wiki/wikis/Main/12345/SubjectForDeletion-tagging-approach"
+}
