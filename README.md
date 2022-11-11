@@ -20,10 +20,10 @@ Get-Help .\MarkAndDeleteUnusedResources.ps1 -Detailed
 ```
 
 Example output:
-![Screenshot](Screenshot.png)
+![Example output](Screenshot.png)
 
 Example tags:
-![Screenshot](Screenshot2.png)
+![Example tags](Screenshot2.png)
 
 This script was primarily written to clean-up large Azure environments and potentially save money along the way. It was inspired by the project [`itoleck/AzureSaveMoney`](https://github.com/itoleck/AzureSaveMoney).
 
@@ -31,7 +31,10 @@ The script was deliberately written in a single file to ensure ease of use. The 
 
 The default values for some parameters can be specified in a config file named `Defaults.json`.
 
-The script implements function hooks named for each supported resource type/kind. Function hooks determine for a specific resource which action shall be taken. The naming convention for hooks is `Test-ResourceActionHook-<resourceType>[-<resourceKind>]`. New hooks can easily be added by implementing a new function. New hooks should be inserted after the marker `[ADD NEW HOOKS HERE]`.
+The script implements function hooks named for each supported resource type/kind. Function hooks determine for a specific resource which action shall be taken. The naming convention for hooks is `Test-ResourceActionHook-<resourceType>[-<resourceKind>]`. New hooks can easily be added by implementing a new function and will be discovered and called automatically. New hooks should be inserted after the marker `[ADD NEW HOOKS HERE]`.
+
+Example hook function:
+![Example hook function](Screenshot3.png)
 
 There are multiple tags which are set when a resource is marked as  subject for deletion (tag names are configurable):
 `SubjectForDeletion`,
