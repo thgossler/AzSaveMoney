@@ -4,7 +4,7 @@ Clean-up unused resources and save money in your Azure environment.
 
 The script [`MarkAndDeleteUnusedResources.ps1`](MarkAndDeleteUnusedResources.ps1) checks each Azure resource (group) across all subscriptions and eventually tags it as subject for deletion or (in some cases) deletes it automatically (after confirmation, configurable). Based on the tag's value suspect resources can be confirmed or rejected as subject for deletion and will be considered accordingly in subsequent runs.
 
-Usage examples:
+Example usage:
 ```powershell
 Get-Help .\MarkAndDeleteUnusedResources.ps1 -Detailed
 ```
@@ -18,6 +18,12 @@ Get-Help .\MarkAndDeleteUnusedResources.ps1 -Detailed
       -TryMakingUserContributorTemporarily `
       -DisableTimeoutForDeleteConfirmationPrompt
 ```
+
+Example output:
+![Screenshot](Screenshot.png)
+
+Example tags:
+![Screenshot](Screenshot2.png)
 
 This script was primarily written to clean-up large Azure environments and potentially save money along the way. It was inspired by the project [`itoleck/AzureSaveMoney`](https://github.com/itoleck/AzureSaveMoney).
 
