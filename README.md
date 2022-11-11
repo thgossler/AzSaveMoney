@@ -9,7 +9,7 @@ Usage examples:
 Get-Help .\MarkAndDeleteUnusedResources.ps1 -Detailed
 ```
 
-```ps
+```powershell
 . .\MarkAndDeleteUnusedResources.ps1 `
       -DirectoryId e0fe770b-8e36-4af1-9b67-4cda0ebe97e0 `
       -AzEnvironment AzureChinaCloud `
