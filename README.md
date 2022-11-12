@@ -30,15 +30,21 @@ The script [`MarkAndDeleteUnusedResources.ps1`](MarkAndDeleteUnusedResources.ps1
 
 Example usage:
 ```powershell
+# Display help
 Get-Help .\MarkAndDeleteUnusedResources.ps1 -Detailed
 ```
 
 ```powershell
+# Simulate execution on all subscriptions in the default directory of the AzureCloud environment
+. .\MarkAndDeleteUnusedResources.ps1 -WhatIf
+```
+
+```powershell
+# Execute on one subscription in the specified directory of the AzureChinaCloud environment
 . .\MarkAndDeleteUnusedResources.ps1 `
       -DirectoryId 'e0fe770b-8e36-4af1-9b67-4cda0ebe97e0' `
       -AzEnvironment 'AzureChinaCloud' `
       -SubscriptionIdsToProcess @("e6229d85-f212-44a3-b9f2-c0bd3394c833") `
-      -AlwaysOnlyMarkForDeletion `
       -TryMakingUserContributorTemporarily `
       -DisableTimeoutForDeleteConfirmationPrompt
 ```

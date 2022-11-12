@@ -110,6 +110,7 @@ Warnings are suppressed by $WarningPreference='SilentlyContinue'.
 # Configuration Settings
 ######################################################################
 
+[CmdletBinding(SupportsShouldProcess)]
 param (
     # The ID of the Azure AD tenant. Can be set in defaults config file.
     [string]$DirectoryId,
@@ -145,11 +146,13 @@ param (
     [int]$DeleteSuspectedResourcesAndGroupsAfterDays = -1,
 
     # An optional URL pointing to documentation about the context-specific approach and application of this script. Can be set in defaults config file.
-    [string]$DocumentationUrl = $null
-)
+    [string]$DocumentationUrl = $null,
 
-# Static setting for enabling simulation mode
-$SIMULATE_ONLY = $false  # when $true no changes will be made (-WhatIf sets this to $true)
+    # Use device authentication.
+    [switch]$UseDeviceAuthentication
+
+    # TODO: support service principal authentication
+)
 
 # Get configured defaults from config file
 $defaultsConfig = (Test-Path -Path $PSScriptRoot/Defaults.json -PathType Leaf) ? 
@@ -563,9 +566,16 @@ function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$Aggregati
     return $measuredMetricData
 }
 
-function Add-SubjectForDeletionTags($ResourceOrGroup, [SubjectForDeletionStatus]$Status = [SubjectForDeletionStatus]::suspected, 
-    [string]$Reason = $null, [string]$Hint = $null, [switch]$SuppressHostOutput = $false) 
+function Add-SubjectForDeletionTags 
 {
+    [CmdletBinding(SupportsShouldProcess)]
+    param (
+        $ResourceOrGroup, 
+        [SubjectForDeletionStatus]$Status = [SubjectForDeletionStatus]::suspected,
+        [string]$Reason = $null, 
+        [string]$Hint = $null, 
+        [switch]$SuppressHostOutput = $false
+    )
     $tags = $ResourceOrGroup.Tags
     $subjectForDeletionTagValue = ($tags.$subjectForDeletionTagName ?? '').Trim()
     $subjectForDeletionFindingDateTagValue = $tags.$subjectForDeletionFindingDateTagName
@@ -605,21 +615,24 @@ function Add-SubjectForDeletionTags($ResourceOrGroup, [SubjectForDeletionStatus]
         elseif ($null -ne $tags.$subjectForDeletionHintTagName) {
             $tagsToBeRemoved.Add($subjectForDeletionHintTagName, $tags.$subjectForDeletionHintTagName)
         }
-        if (!$SIMULATE_ONLY) {
-            $result = Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $newTags -Operation Merge
-            if (!$SuppressHostOutput -and $result) {
-                Write-Host "        $($simulationHint)Added tags " -NoNewline
-                Write-Host ($newTags | ConvertTo-Json -Compress) -ForegroundColor White
-            }
+        $result = Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $newTags -Operation Merge -WhatIf:$WhatIfPreference
+        if (!$SuppressHostOutput -and $result) {
+            Write-Host "        $($WhatIfHint)Added tags " -NoNewline
+            Write-Host ($newTags | ConvertTo-Json -Compress) -ForegroundColor White
         }
     }
     # Remove existing tags which are not specified
-    if (!$SIMULATE_ONLY -and $tagsToBeRemoved.Keys.Count -gt 0) {
-        Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $tagsToBeRemoved -Operation Delete | Out-Null
+    if ($tagsToBeRemoved.Keys.Count -gt 0) {
+        Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $tagsToBeRemoved -Operation Delete -WhatIf:$WhatIfPreference | Out-Null
     }
 }
 
-function Remove-SubjectForDeletionTags($ResourceOrGroup) {
+function Remove-SubjectForDeletionTags
+{
+    [CmdletBinding(SupportsShouldProcess)]
+    param (
+        $ResourceOrGroup    
+    )
     $tags = $ResourceOrGroup.Tags
     $resourceOrGroupId = $ResourceOrGroup.ResourceId
     $subjectForDeletionTagValue = ($tags.$subjectForDeletionTagName ?? '').Trim()
@@ -647,8 +660,8 @@ function Remove-SubjectForDeletionTags($ResourceOrGroup) {
         $tagsToRemove.Add($subjectForDeletionReasonTagName, $subjectForDeletionReasonTagValue)
         $removeNecessary = $true
     }
-    if (!$SIMULATE_ONLY -and $removeNecessary) {
-        Update-AzTag -ResourceId $resourceOrGroupId -tag $tagsToRemove -Operation Delete | Out-Null
+    if ($removeNecessary) {
+        Update-AzTag -ResourceId $resourceOrGroupId -tag $tagsToRemove -Operation Delete -WhatIf:$WhatIfPreference | Out-Null
     }
 }
 
@@ -728,14 +741,14 @@ function Get-UserConfirmationWithTimeout(
 # Execution
 ######################################################################
 
-# Override $SIMULATE_ONLY settings when -WhatIf is used
-if ($SIMULATE_ONLY -eq $false -and $WhatIfPreference -eq $true) {
-    $SIMULATE_ONLY = $true
-}
-$simulationHint = ""
-if ($SIMULATE_ONLY -eq $true) {
-    Write-Host "$([Environment]::NewLine) *** SIMULATION mode (no changes are made) *** " -BackgroundColor DarkBlue -ForegroundColor White
-    $simulationHint = "SIMULATION: "
+$WarningPreference = 'SilentlyContinue'  # to suppress upcoming breaking changes warnings
+
+$WhatIfHint = ""
+$IsWhatIfMode = !$PSCmdlet.ShouldProcess("WhatIf mode", "Enable")
+if ($IsWhatIfMode) {
+    Write-Host ""
+    Write-Host " *** WhatIf mode (no changes are made) *** " -BackgroundColor DarkBlue -ForegroundColor White
+    $WhatIfHint = "What if: "
 }
 
 # Override $performDeletionWithoutConfirmation settings when -Confirm is used
@@ -746,18 +759,23 @@ $lastUserConfirmationResult = $performDeletionWithoutConfirmation -eq $true ?
     [UserConfirmationResult]::YesForAll : [UserConfirmationResult]::Unknown
 
 if (!((Get-AzEnvironment).Name -contains $AzEnvironment)) {
-    throw [System.ApplicationException] ("Invalid Azure environment name '{0}'" -f $AzEnvironment)
+    Write-Error "Invalid Azure environment name '$AzEnvironment'"
+    return
 }
-
-$WarningPreference = 'SilentlyContinue'  # to suppress upcoming breaking changes warnings
-
-if (-not (Get-Module -ListAvailable -Name 'Az.ResourceGraph')) {
-    Install-Module -Name 'Az.ResourceGraph' -Force
+    
+$loggedIn = $false
+$useDeviceAuth = $UseDeviceAuthentication.IsPresent
+$warnAction = $useDeviceAuth ? 'Continue' : 'SilentlyContinue'
+if (![string]::IsNullOrWhiteSpace($DirectoryId)) {
+    $loggedIn = Connect-AzAccount -Environment $AzEnvironment -UseDeviceAuthentication:$useDeviceAuth -TenantId $DirectoryId -WarningAction $warnAction -WhatIf:$false
 }
-
-$loggedIn = Connect-AzAccount -Environment $AzEnvironment -TenantId $DirectoryId
+else {
+    $loggedIn = Connect-AzAccount -Environment $AzEnvironment -UseDeviceAuthentication:$useDeviceAuth -WarningAction $warnAction -WhatIf:$false
+    $DirectoryId = (Get-AzContext).Tenant.Id
+}
 if (!$loggedIn) {
-    throw [System.ApplicationException] ("Sign-in failed")
+    Write-Error "Sign-in failed"
+    return
 }
 
 Write-Host "$([Environment]::NewLine)Getting Azure subscriptions..."
@@ -782,18 +800,18 @@ foreach ($sub in $allSubscriptions) {
     Write-Host "Processing subscription '$($sub.Name)' ($($sub.Id))..." -ForegroundColor Cyan
 
     # get all resources in current subscription
-    Select-AzSubscription -SubscriptionName $sub.Name -TenantId $DirectoryId | Out-Null
+    Select-AzSubscription -SubscriptionName $sub.Name -TenantId $DirectoryId -WhatIf:$false | Out-Null
 
     $tempRoleAssignment = $null
-    if ($TryMakingUserContributorTemporarily -and !$SIMULATE_ONLY) {
+    if ($TryMakingUserContributorTemporarily) {
         if ($null -ne $signedInUser) {
             $subscriptionResourceId = "/subscriptions/$($sub.Id)"
             $roleAssignmentExists = @((Get-AzRoleAssignment -SignInName $signedInUser.UserPrincipalName -Scope $subscriptionResourceId -RoleDefinitionName Contributor)).Count -gt 0
             if (!$roleAssignmentExists) {
                 $tempRoleAssignment = New-AzRoleAssignment -SignInName $signedInUser.UserPrincipalName -Scope $subscriptionResourceId -RoleDefinitionName Contributor `
-                    -Description "Temporary permission to create tags on resources and delete empty resource groups" -ErrorAction SilentlyContinue
+                    -Description "Temporary permission to create tags on resources and delete empty resource groups" -ErrorAction SilentlyContinue -WhatIf:$WhatIfPreference
                 if ($tempRoleAssignment) {
-                    Write-Host "    Contributor role temporarily assigned to user '$($user.DisplayName)'" -ForegroundColor DarkGray
+                    Write-Host "    $($WhatIfHint)Contributor role temporarily assigned to user '$($user.DisplayName)'" -ForegroundColor DarkGray
                 }
             }
         }
@@ -845,8 +863,8 @@ foreach ($sub in $allSubscriptions) {
                         $activityLogs = Get-AzActivityLog -ResourceGroupName $resourceGroupName -StartTime (Get-Date -AsUTC).AddDays(-90) -EndTime (Get-Date -AsUTC)
                         $activelyUsed = $activityLogs | Where-Object { $_.Authorization.Action -imatch '^(?:(?!tags|roleAssignments).)*\/(write|action)$' }
                         if (!$activelyUsed) {
-                            Write-Host "        $($simulationHint)Marking potentially unused resource group '$resourceGroupName' for deletion..." -ForegroundColor Yellow
-                            Add-SubjectForDeletionTags -ResourceOrGroup $rg -SuppressHostOutput `
+                            Write-Host "        $($WhatIfHint)Marking potentially unused resource group '$resourceGroupName' for deletion..." -ForegroundColor Yellow
+                            Add-SubjectForDeletionTags -ResourceOrGroup $rg -SuppressHostOutput -WhatIf:$WhatIfPreference `
                                 -Reason "no deployments for $resourceGroupOldAfterDays days and no write/action activities for 3 months"
                             $rgJustTagged = $true
                         }
@@ -863,7 +881,7 @@ foreach ($sub in $allSubscriptions) {
                 if (![string]::IsNullOrWhiteSpace($subjectForDeletionTagValue)) {
                     $taggedResources = Search-AzGraph -Query "resources | where subscriptionId =~ '$($sub.SubscriptionId)' and resourceGroup =~ '$($rg.ResourceGroupName)' and tags contains '$($subjectForDeletionTagName)'"
                     if ($taggedResources.Count -eq 0) {
-                        Remove-SubjectForDeletionTags -ResourceOrGroup $rg
+                        Remove-SubjectForDeletionTags -ResourceOrGroup $rg -WhatIf:$WhatIfPreference
                     }
                 }
             }
@@ -904,10 +922,8 @@ foreach ($sub in $allSubscriptions) {
                                 -DisableTimeout:$DisableTimeoutForDeleteConfirmationPrompt `
                                 -LastConfirmationResult $lastUserConfirmationResult
                             if ($lastUserConfirmationResult -ne [UserConfirmationResult]::No) {
-                                Write-Host "        $($simulationHint)Resource is being deleted..." -ForegroundColor Red
-                                if (!$SIMULATE_ONLY) {
-                                    Remove-AzResource -ResourceId $resource.ResourceId -Force -AsJob | Out-Null
-                                }
+                                Write-Host "        $($WhatIfHint)Resource is being deleted..." -ForegroundColor Red
+                                Remove-AzResource -ResourceId $resource.ResourceId -Force -AsJob -WhatIf:$WhatIfPreference | Out-Null
                                 continue  # skip to next resource
                             }
                             else {
@@ -918,7 +934,7 @@ foreach ($sub in $allSubscriptions) {
                 }
                 elseif ($isResourceDeletionRejected) {
                     # Remove reason and finding date tags
-                    Remove-SubjectForDeletionTags -ResourceOrGroup $resource -TargetStatus [SubjectForDeletionStatus]::rejected | Out-Null
+                    Remove-SubjectForDeletionTags -ResourceOrGroup $resource -TargetStatus [SubjectForDeletionStatus]::rejected -WhatIf:$WhatIfPreference | Out-Null
                 }
             }
 
@@ -966,31 +982,29 @@ foreach ($sub in $allSubscriptions) {
         # delete or mark resource accordingly
         switch ($action) {
             "markForDeletion" {
-                Write-Host "        $($simulationHint)Marking resource for deletion..."
-                Add-SubjectForDeletionTags -ResourceOrGroup $resource -Reason $reason
+                Write-Host "        $($WhatIfHint)Marking resource for deletion..."
+                Add-SubjectForDeletionTags -ResourceOrGroup $resource -Reason $reason -WhatIf:$WhatIfPreference
             }
             "markForSuspectSubResourceCheck" {
-                Write-Host "        $($simulationHint)Marking resource for check of suspect sub resources..."
-                Add-SubjectForDeletionTags -ResourceOrGroup $resource -Status [SubjectForDeletionStatus]::suspectedSubResources -Reason $reason
+                Write-Host "        $($WhatIfHint)Marking resource for check of suspect sub resources..."
+                Add-SubjectForDeletionTags -ResourceOrGroup $resource -Status [SubjectForDeletionStatus]::suspectedSubResources -Reason $reason -WhatIf:$WhatIfPreference
             }
             "delete" {
-                Write-Host "        $($simulationHint)Deleting resource..."
-                if ($SIMULATE_ONLY -eq $false) {
-                    $lastUserConfirmationResult = Get-UserConfirmationWithTimeout -DisableTimeout:$DisableTimeoutForDeleteConfirmationPrompt `
-                        -LastConfirmationResult $lastUserConfirmationResult
-                    if ($lastUserConfirmationResult -ne [UserConfirmationResult]::No) {
-                        Remove-AzResource -ResourceId $resource.ResourceId -Force -AsJob | Out-Null
-                    }
-                    else {
-                        Write-Host "        Deletion rejected by user"
-                    }
+                Write-Host "        $($WhatIfHint)Deleting resource..."
+                $lastUserConfirmationResult = Get-UserConfirmationWithTimeout -DisableTimeout:$DisableTimeoutForDeleteConfirmationPrompt `
+                    -LastConfirmationResult $lastUserConfirmationResult
+                if ($lastUserConfirmationResult -ne [UserConfirmationResult]::No) {
+                    Remove-AzResource -ResourceId $resource.ResourceId -Force -AsJob -WhatIf:$WhatIfPreference | Out-Null
+                }
+                else {
+                    Write-Host "        Deletion rejected by user"
                 }
             }
             default {
                 $tags = $resource.Tags
                 if ($tags.$subjectForDeletionTagName) {
                     # previously tagged resource changed and is no subject for deletion anymore
-                    Remove-SubjectForDeletionTags -ResourceOrGroup $resource
+                    Remove-SubjectForDeletionTags -ResourceOrGroup $resource -WhatIf:$WhatIfPreference
                 }
             }
         }
@@ -1015,10 +1029,8 @@ foreach ($sub in $allSubscriptions) {
                         $lastUserConfirmationResult = Get-UserConfirmationWithTimeout -DisableTimeout:$DisableTimeoutForDeleteConfirmationPrompt `
                             -LastConfirmationResult $lastUserConfirmationResult
                         if ($lastUserConfirmationResult -ne [UserConfirmationResult]::No) {
-                            Write-Host "        $($simulationHint)Resource group is being deleted..." -ForegroundColor Red
-                            if (!$SIMULATE_ONLY) {
-                                Remove-AzResourceGroup -Name $resourceGroup.ResourceGroupName -Force -AsJob | Out-Null
-                            }
+                            Write-Host "        $($WhatIfHint)Resource group is being deleted..." -ForegroundColor Red
+                            Remove-AzResourceGroup -Name $resourceGroup.ResourceGroupName -Force -AsJob -WhatIf:$WhatIfPreference | Out-Null
                             continue  # skip to next resource group
                         }
                         else {
@@ -1037,22 +1049,20 @@ foreach ($sub in $allSubscriptions) {
                 if ($AlwaysOnlyMarkForDeletion -or $DontDeleteEmptyResourceGroups) {
                     Write-Host "        --> action: " -NoNewline
                     Write-Host ([ResourceAction]::markForDeletion).toString() -ForegroundColor Yellow
-                    Write-Host "        $($simulationHint)Marking empty resource group '$rgname' for deletion..."
-                    Add-SubjectForDeletionTags -ResourceOrGroup $resourceGroup -Reason "group is empty"
+                    Write-Host "        $($WhatIfHint)Marking empty resource group '$rgname' for deletion..."
+                    Add-SubjectForDeletionTags -ResourceOrGroup $resourceGroup -Reason "group is empty" -WhatIf:$WhatIfPreference
                 }
                 else {
                     Write-Host "        --> action: " -NoNewline
                     Write-Host ([ResourceAction]::delete).ToString() -ForegroundColor Red
-                    Write-Host "        $($simulationHint)Deleting empty resource group '$rgname'..."
-                    if ($SIMULATE_ONLY -eq $false) {
-                        $lastUserConfirmationResult = Get-UserConfirmationWithTimeout -DisableTimeout:$DisableTimeoutForDeleteConfirmationPrompt `
-                            -LastConfirmationResult $lastUserConfirmationResult
-                        if ($lastUserConfirmationResult -ne [UserConfirmationResult]::No) {
-                            Remove-AzResourceGroup -Id $resourceGroup.ResourceId -Force -AsJob | Out-Null
-                        }
-                        else {
-                            Write-Host "        Deletion rejected by user"
-                        }
+                    Write-Host "        $($WhatIfHint)Deleting empty resource group '$rgname'..."
+                    $lastUserConfirmationResult = Get-UserConfirmationWithTimeout -DisableTimeout:$DisableTimeoutForDeleteConfirmationPrompt `
+                        -LastConfirmationResult $lastUserConfirmationResult
+                    if ($lastUserConfirmationResult -ne [UserConfirmationResult]::No) {
+                        Remove-AzResourceGroup -Id $resourceGroup.ResourceId -Force -AsJob -WhatIf:$WhatIfPreference | Out-Null
+                    }
+                    else {
+                        Write-Host "        Deletion rejected by user"
                     }
                 }
             }
@@ -1060,9 +1070,9 @@ foreach ($sub in $allSubscriptions) {
     }
     Write-Host "        Done"
 
-    if ($TryMakingUserContributorTemporarily -and $null -ne $tempRoleAssignment -and !$SIMULATE_ONLY) {
-        Remove-AzRoleAssignment -InputObject $tempRoleAssignment -ErrorAction SilentlyContinue | Out-Null
-        Write-Host "    Contributor role removed for user '$($user.DisplayName)'" -ForegroundColor DarkGray
+    if ($TryMakingUserContributorTemporarily -and $null -ne $tempRoleAssignment) {
+        Remove-AzRoleAssignment -InputObject $tempRoleAssignment -ErrorAction SilentlyContinue -WhatIf:$WhatIfPreference | Out-Null
+        Write-Host "    $($WhatIfHint)Contributor role removed for user '$($user.DisplayName)'" -ForegroundColor DarkGray
     }
 }
 

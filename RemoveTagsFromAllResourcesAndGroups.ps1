@@ -32,6 +32,7 @@ Warnings are suppressed by $WarningPreference='SilentlyContinue'.
 # Configuration Settings
 ######################################################################
 
+[CmdletBinding(SupportsShouldProcess)]
 param (
     # The ID of the Azure AD tenant. Can be set in defaults config file. Can be set in defaults config file.
     [string]$DirectoryId,
@@ -56,9 +57,6 @@ param (
     # Don't remove the tags from resource groups.
     [switch]$DontRemoveFromResourceGroups = $false
 )
-
-# Static setting for enabling simulation mode
-$SIMULATE_ONLY = $false  # when $true no changes will be made (-WhatIf sets this to $true)
 
 # Get configured defaults from config file
 $defaultsConfig = (Test-Path -Path $PSScriptRoot/Defaults.json -PathType Leaf) ? (Get-Content -Path $PSScriptRoot/Defaults.json -Raw | ConvertFrom-Json) : @{}
@@ -85,32 +83,29 @@ if ($SubscriptionIdsToProcess.Count -lt 1 -and $defaultsConfig.SubscriptionIdsTo
 # Execution
 ######################################################################
 
-# Override $SIMULATE_ONLY settings when -WhatIf is used
-if ($SIMULATE_ONLY -eq $false -and $WhatIfPreference -eq $true) {
-    $SIMULATE_ONLY = $true
-}
-
-if (!((Get-AzEnvironment).Name -contains $AzEnvironment)) {
-    throw [System.ApplicationException] ("Invalid Azure environment name '{0}'" -f $AzEnvironment)
-}
-
 $WarningPreference = 'SilentlyContinue'
 
 Clear-Host
 
-$simulationHint = ""
-if ($SIMULATE_ONLY -eq $true) {
-    Write-Host "$([Environment]::NewLine) *** SIMULATION mode (no changes are made) *** " -BackgroundColor DarkBlue -ForegroundColor White
+$WhatIfHint = ""
+$IsWhatIfMode = !$PSCmdlet.ShouldProcess("WhatIf mode", "Enable")
+if ($IsWhatIfMode) {
     Write-Host ""
-    $simulationHint = "SIMULATION: "
+    Write-Host " *** WhatIf mode (no changes are made) *** " -BackgroundColor DarkBlue -ForegroundColor White
+    $WhatIfHint = "What if: "
+}
+
+if (!((Get-AzEnvironment).Name -contains $AzEnvironment)) {
+    Write-Error "Invalid Azure environment name '$AzEnvironment'"
+    return
 }
 
 $loggedIn = $false
 if (![string]::IsNullOrWhiteSpace($DirectoryId)) {
-    $loggedIn = Connect-AzAccount -Environment $AzEnvironment -TenantId $DirectoryId
+    $loggedIn = Connect-AzAccount -Environment $AzEnvironment -TenantId $DirectoryId -WhatIf:$false
 }
 else {
-    $loggedIn = Connect-AzAccount -Environment $AzEnvironment
+    $loggedIn = Connect-AzAccount -Environment $AzEnvironment -WhatIf:$false
     $DirectoryId = (Get-AzContext).Tenant.Id
 }
 if (!$loggedIn) {
@@ -118,7 +113,7 @@ if (!$loggedIn) {
     return
 }
 
-Write-Host "Subscriptions to process:"
+Write-Host "$([Environment]::NewLine)Subscriptions to process:"
 if ($null -ne $SubscriptionIdsToProcess -and $SubscriptionIdsToProcess.Count -gt 0) {
     foreach ($s in $SubscriptionIdsToProcess) {
         Write-Host "    $s"
@@ -156,7 +151,7 @@ if (!$DontRemoveFromResources) {
         $op = " or "
     }
 
-    if ($VerbosePreference -eq $true -or $SIMULATE_ONLY) {
+    if ($VerbosePreference -eq $true) {
         Write-Host "Query: $query" -ForegroundColor DarkGray
     }
     
@@ -175,11 +170,11 @@ if (!$DontRemoveFromResources) {
     } while ($null -ne $skipToken)
     
     if ($resources.Count -gt 0) {
-        Write-Host "$($simulationHint)Removing tags from resources (subscriptionId / resourceGroupName / resourceName):"
+        Write-Host "$($WhatIfHint)Removing tags from resources (subscriptionId / resourceGroupName / resourceName):"
         $i = 0; $count = $resources.Count
         foreach ($resource in $resources) {
             $i += 1
-            Write-Host "    ($i/$count) $($resource.subscriptionId) / $($resource.resourceGroup) / $($resource.name)..."
+            Write-Host "    $($WhatIfHint)($i/$count) $($resource.subscriptionId) / $($resource.resourceGroup) / $($resource.name)..."
             $tags = Get-AzTag -ResourceId $resource.id
             if (!$tags.Properties.TagsProperty) { continue }
             $tagsToRemove = [hashtable]@{}
@@ -189,8 +184,8 @@ if (!$DontRemoveFromResources) {
                     $tagsToRemove.Add($tagName, $tags.Properties.TagsProperty[$tagName]) | Out-Null
                 }
             }
-            if ($tagsToRemove.Keys.Count -gt 0 -and !$SIMULATE_ONLY) {
-                Update-AzTag -ResourceId $resource.id -Tag $tagsToRemove -Operation Delete | Out-Null
+            if ($tagsToRemove.Keys.Count -gt 0 -and !$IsWhatIfMode) {
+                Update-AzTag -ResourceId $resource.id -Tag $tagsToRemove -Operation Delete -WhatIf:$WhatIfPreference | Out-Null
             }
         }    
     }
@@ -213,7 +208,7 @@ if (!$DontRemoveFromResourceGroups) {
         }
         $s_i += 1
         Write-Host "$([Environment]::NewLine)($s_i/$s_count) Subscription '$($sub.Name)' ($($sub.SubscriptionId))..."
-        Set-AzContext -TenantId $DirectoryId -Subscription $sub.SubscriptionId | Out-Null
+        Set-AzContext -TenantId $DirectoryId -Subscription $sub.SubscriptionId -WhatIf:$false | Out-Null
         $resourceGroups = [hashtable]@{}
         foreach ($tagName in $TagNamesToRemove) {
             Get-AzResourceGroup | Where-Object { $_.Tags.Keys -icontains $tagName } | ForEach-Object {
@@ -222,12 +217,12 @@ if (!$DontRemoveFromResourceGroups) {
             }
         }
         if ($resourceGroups.Count -eq 0) { continue }
-        Write-Host "$($simulationHint)Removing tags from resource groups (subscriptionId / resourceGroupName):"
+        Write-Host "$($WhatIfHint)Removing tags from resource groups (subscriptionId / resourceGroupName):"
         $r_i = 0; $r_count = $resourceGroups.Keys.Count
         foreach ($rgName in $resourceGroups.Keys) {
             $r_i += 1
             $rg = $resourceGroups[$rgName]
-            Write-Host "    ($r_i/$r_count) $($sub.SubscriptionId) / $($rg.ResourceGroupName)..."
+            Write-Host "    $($WhatIfHint)($r_i/$r_count) $($sub.SubscriptionId) / $($rg.ResourceGroupName)..."
             $tags = Get-AzTag -ResourceId $rg.ResourceId
             if (!$tags.Properties.TagsProperty) { continue }
             $tagsToRemove = [hashtable]@{}
@@ -237,8 +232,8 @@ if (!$DontRemoveFromResourceGroups) {
                     $tagsToRemove.Add($tagName, $tags.Properties.TagsProperty[$tagName]) | Out-Null
                 }
             }
-            if ($tagsToRemove.Keys.Count -gt 0 -and !$SIMULATE_ONLY) {
-                Update-AzTag -ResourceId $rg.ResourceId -Tag $tagsToRemove -Operation Delete | Out-Null
+            if ($tagsToRemove.Keys.Count -gt 0 -and !$IsWhatIfMode) {
+                Update-AzTag -ResourceId $rg.ResourceId -Tag $tagsToRemove -Operation Delete -WhatIf:$WhatIfPreference | Out-Null
             }
         }
     }

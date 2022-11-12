@@ -1,6 +1,6 @@
 {
-	"name": "PowerShell",
-	"image": "mcr.microsoft.com/powershell:lts-debian-11",
+	"name": "AzSaveMoney",
+
 	"features": {
 		"ghcr.io/devcontainers/features/common-utils:1": {
 			"installZsh": "true",
@@ -13,10 +13,9 @@
 		}
 	},
 
-	"postCreateCommand": [
-		"pwsh -c 'Install-Module -Name Az -Force'",
-		"pwsh -c 'Install-Module -Name Az.ResourceGraph -Force'"
-	],
+	"build": { 
+		"dockerfile": "Dockerfile"
+	},
 
 	// Configure tool-specific properties.
 	"customizations": {
@@ -33,10 +32,4 @@
 			]
 		}
 	}
-
-	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	// "forwardPorts": [],
-
-	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
-	// "remoteUser": "root"
 }
