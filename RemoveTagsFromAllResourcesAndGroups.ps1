@@ -78,6 +78,8 @@ if ($SubscriptionIdsToProcess.Count -lt 1 -and $defaultsConfig.SubscriptionIdsTo
     $SubscriptionIdsToProcess = $defaultsConfig.SubscriptionIdsToProcess
 }
 
+$tab = '    '
+
 
 ######################################################################
 # Execution
@@ -116,7 +118,7 @@ if (!$loggedIn) {
 Write-Host "$([Environment]::NewLine)Subscriptions to process:"
 if ($null -ne $SubscriptionIdsToProcess -and $SubscriptionIdsToProcess.Count -gt 0) {
     foreach ($s in $SubscriptionIdsToProcess) {
-        Write-Host "    $s"
+        Write-Host "$($tab)$s"
     }
 }
 else {
@@ -124,7 +126,7 @@ else {
 }
 
 Write-Host "$([System.Environment]::NewLine)Tags to remove:"
-$TagNamesToRemove | ForEach-Object { Write-Host "    $_" }
+$TagNamesToRemove | ForEach-Object { Write-Host "$($tab)$_" }
 
 $choice = Read-Host -Prompt "$([Environment]::NewLine)Remove all these tags?  'y' = yes, <Any> = no "
 if ($choice -ine "y") {
@@ -174,7 +176,7 @@ if (!$DontRemoveFromResources) {
         $i = 0; $count = $resources.Count
         foreach ($resource in $resources) {
             $i += 1
-            Write-Host "    $($WhatIfHint)($i/$count) $($resource.subscriptionId) / $($resource.resourceGroup) / $($resource.name)..."
+            Write-Host "$($tab)$($WhatIfHint)($i/$count) $($resource.subscriptionId) / $($resource.resourceGroup) / $($resource.name)..."
             $tags = Get-AzTag -ResourceId $resource.id
             if (!$tags.Properties.TagsProperty) { continue }
             $tagsToRemove = [hashtable]@{}
@@ -222,7 +224,7 @@ if (!$DontRemoveFromResourceGroups) {
         foreach ($rgName in $resourceGroups.Keys) {
             $r_i += 1
             $rg = $resourceGroups[$rgName]
-            Write-Host "    $($WhatIfHint)($r_i/$r_count) $($sub.SubscriptionId) / $($rg.ResourceGroupName)..."
+            Write-Host "$($tab)$($WhatIfHint)($r_i/$r_count) $($sub.SubscriptionId) / $($rg.ResourceGroupName)..."
             $tags = Get-AzTag -ResourceId $rg.ResourceId
             if (!$tags.Properties.TagsProperty) { continue }
             $tagsToRemove = [hashtable]@{}
