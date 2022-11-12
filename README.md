@@ -131,4 +131,4 @@ Project Link: [https://github.com/thgossler/AzSaveMoney](https://github.com/thgo
 [issues-shield]: https://img.shields.io/github/issues/thgossler/AzSaveMoney.svg?style=for-the-badge
 [issues-url]: https://github.com/thgossler/AzSaveMoney/issues
 [license-shield]: https://img.shields.io/github/license/thgossler/AzSaveMoney.svg?style=for-the-badge
-[license-url]: https://github.com/thgossler/AzSaveMoney/blob/master/LICENSE
+[license-url]: https://github.com/thgossler/AzSaveMoney/blob/main/LICENSE
