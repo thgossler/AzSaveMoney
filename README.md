@@ -30,13 +30,20 @@ The script [`MarkAndDeleteUnusedResources.ps1`](MarkAndDeleteUnusedResources.ps1
 
 Example usage:
 ```powershell
-# Display help
+# Display usage help
 Get-Help .\MarkAndDeleteUnusedResources.ps1 -Detailed
 ```
 
 ```powershell
 # Simulate execution on all subscriptions in the default directory of the AzureCloud environment
 . .\MarkAndDeleteUnusedResources.ps1 -WhatIf
+```
+
+```powershell
+# Execute on all subscriptions in the default directory of the AzureCloud environment.
+# The parameter UseDeviceAuthentication allows indirect user sign-in with device code, e.g.
+# in a devcontainer where the web browser cannot used.
+. .\MarkAndDeleteUnusedResources.ps1 -UseDeviceAuthentication
 ```
 
 ```powershell
