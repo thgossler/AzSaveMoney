@@ -21,6 +21,8 @@
     <a href="https://github.com/thgossler/AzSaveMoney/issues">Request Feature</a>
     ·
     <a href="https://github.com/thgossler/AzSaveMoney#contributing">Contribute</a>
+    ·
+    <a href="https://github.com/sponsors/thgossler">Sponsor project</a>
   </p>
 </div>
 
