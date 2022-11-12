@@ -47,6 +47,15 @@ Get-Help .\MarkAndDeleteUnusedResources.ps1 -Detailed
 ```
 
 ```powershell
+# Execute on all subscriptions in the default directory of the AzureCloud environment.
+# The parameter ServicePrincipalCredential allows sign-in with a service principal.
+$appId = 'f246e0a1-5996-4a2f-971d-c6d4da41510e'
+$secret = (ConvertTo-SecureString -String '...' -AsPlainText)  # secret must not be in source code, just for illustration!
+$cred = (New-Object System.Management.Automation.PSCredential $appId, $secret)
+. .\MarkAndDeleteUnusedResources.ps1 -ServicePrincipalCredential $cred
+```
+
+```powershell
 # Execute on one subscription in the specified directory of the AzureChinaCloud environment
 . .\MarkAndDeleteUnusedResources.ps1 `
       -DirectoryId 'e0fe770b-8e36-4af1-9b67-4cda0ebe97e0' `
