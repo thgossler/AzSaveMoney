@@ -1,15 +1,14 @@
 ﻿<#
 .SYNOPSIS
-This   script  checks  each    Azure   resource  (group)    across all
-subscriptions and  eventually tags it  as  subject for deletion or (in
-some    cases)  deletes    it    automatically   (after  confirmation,
-configurable).  Based on the  tag's  value  suspect resources   can be
-confirmed or rejected as subject  for deletion and will  be considered
-accordingly in subsequent runs.
+This script checks each Azure resource (group) across all subscriptions and
+eventually tags it as subject for deletion or (in some cases) deletes it
+automatically (after confirmation, configurable). Based on the tag's value
+suspect resources can be confirmed or rejected as subject for deletion and will
+be considered accordingly in subsequent runs.
 
 .DESCRIPTION
-  ___
-___   ███████╗ █████╗ ██╗   ██╗███████╗
+___
+__    ███████╗ █████╗ ██╗   ██╗███████╗
       ██╔════╝██╔══██╗██║   ██║██╔════╝
       ███████╗███████║██║   ██║█████╗
       ╚════██║██╔══██║╚██╗ ██╔╝██╔══╝
@@ -24,59 +23,60 @@ ___   ███████╗ █████╗ ██╗   ██╗███
               ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝   ╚═╝   ___
               and clean-up...
 
-This script was primarily written to clean-up large Azure environments
-and  potentially  save money  along the way.  It was inspired  by  the 
-project 'itoleck/AzureSaveMoney'.
+This script was primarily written to clean-up large Azure environments and
+potentially save money along the way. It was inspired by the project
+'itoleck/AzureSaveMoney'.
 
-This script was deliberately written in  a  single file to ensure ease
-of use. The log output is written  to the host with  colors to improve
-human readability.
+This script was deliberately written in a single file to ensure ease of use.
+The log output is written to the host with colors to improve human readability.
 
-The default values  for some parameters  can be specified  in a config
-file named 'Defaults.json'.
+The default values for some parameters can be specified in a config file named
+'Defaults.json'.
 
 The script implements function hooks named for each supported resource
-type/kind.  Function  hooks  determine   for a specific resource which
-action   shall  be  taken.   The    naming  convention for    hooks is
-"Test-ResourceActionHook-<resourceType>[-<resourceKind>]". New   hooks
-can  easily  be added  by  implementing  a  new function  and  will be 
-discovered  and  called automatically. New  hooks  should be  inserted 
-after the marker [ADD NEW HOOKS HERE].
+type/kind. Function hooks determine for a specific resource which action shall
+be taken. The naming convention for hooks is
+"Test-ResourceActionHook-<resourceType>[-<resourceKind>]". New hooks can easily
+be added by implementing a new function and will be discovered and called
+automatically. New hooks should be inserted after the marker [ADD NEW HOOKS
+HERE].
 
-There are  multiple tags  which are set  when a resource  is marked as 
-subject for deletion (tag names are configurable):
-"SubjectForDeletion",
-"SubjectForDeletion-FindingDate",
-"SubjectForDeletion-Reason" and
-"SubjectForDeletion-Hint" (optional).
-The "SubjectForDeletion" tag has one of the following values after the
-script ran and the tag was created:
+There are multiple tags which are set when a resource is marked as subject for
+deletion (tag names are configurable):
+
+- "SubjectForDeletion",
+- "SubjectForDeletion-FindingDate",
+- "SubjectForDeletion-Reason" and
+- "SubjectForDeletion-Hint" (optional).
+
+The "SubjectForDeletion" tag has one of the following values after the script
+ran and the tag was created:
+
 - "suspected": resource marked as subject for deletion
-- "suspectedSubResources": at least one  sub resource  is subject  for
-  deletion
-As long as  the tag  `SubjectForDeletion`  has a value  starting  with 
-`suspected...`  the resource  is reevaluated  in every run and the tag 
-value is updated (overwritten). You can update the tag value to one of
-the following  values  in order to  influence  the script behavior  in 
-subsequent runs (see below).
+- "suspectedSubResources": at least one sub resource is subject for deletion
+
+As long as the tag `SubjectForDeletion` has a value starting with
+`suspected...` the resource is reevaluated in every run and the tag value is
+updated (overwritten). You can update the tag value to one of the following
+values in order to influence the script behavior in subsequent runs (see below).
 
 The following example process is suggested to for large organizations:
+
 1. RUN script regularly
-2. ALERT `suspected` or  `suspectedSubResources`  resources  to owners
-3. MANUAL RESOLUTION  by owners  by  reviewing  and  changing  the tag 
-   value  of  `SubjectForDeletion`  to  one of  the  following  values 
-   (case-sensitive!):
-   - `rejected`: Resource  is needed  and  shall NOT be deleted  (this 
-     status will  not be overwritten  in subsequent runs  for 6 months 
-     after `SubjectForDeletion-FindingDate`)
-   - `confirmed`: Resource  shall be  deleted  (will be  automatically 
-     deleted in the next run)
-4. AUTO-DELETION/REEVALUATION: Subsequent  script runs  will check
-   all resources again with the following special handling for status:
-   - `confirmed`: resource will be deleted
-   - `suspected`: if `SubjectForDeletion-FindingDate` is older that 30
-     days (e.g. resource was not reviewed in time),  the resource will 
-     be automatically deleted
+2. ALERT `suspected` or `suspectedSubResources` resources to owners
+3. MANUAL RESOLUTION by owners by reviewing and changing the tag value of
+   `SubjectForDeletion` to one of the following values (case-sensitive!):
+  - `rejected`: Resource is needed and shall NOT be deleted (this status will 
+    not be overwritten in subsequent runs for 6 months after
+    `SubjectForDeletion-FindingDate`).
+  - `confirmed`: Resource shall be deleted (will be automatically deleted in 
+    the next run).
+4. AUTO-DELETION/REEVALUATION: Subsequent script runs will check all resources
+again with the following special handling for status:
+  - `confirmed`: resource will be deleted.
+  - `suspected`: if `SubjectForDeletion-FindingDate` is older that 30 days 
+    (e.g. resource was not reviewed in time), the resource will be 
+    automatically deleted.
 
 Project Link: https://github.com/thgossler/AzSaveMoney
 Copyright (c) 2022 Thomas Gossler
@@ -88,8 +88,8 @@ Azure resources/groups across all (or specified) subscriptions.
 
 .OUTPUTS
 Resource/group tags "SubjectForDeletion", "SubjectForDeletion-Reason",
-"SubjectForDeletion-FindingDate",  "SubjectForDeletion-Hint",  deleted 
-empty resource groups eventually.
+"SubjectForDeletion-FindingDate", "SubjectForDeletion-Hint", deleted empty
+resource groups eventually.
 
 .NOTES
 Warnings are suppressed by $WarningPreference='SilentlyContinue'.
@@ -115,10 +115,12 @@ param (
     # The ID of the Azure AD tenant. Can be set in defaults config file.
     [string]$DirectoryId,
 
-    # The Azure environment name (for options call "(Get-AzEnvironment).Name"). Can be set in defaults config file.
+    # The Azure environment name (for options call "(Get-AzEnvironment).Name").
+    # Can be set in defaults config file.
     [string]$AzEnvironment,
 
-    # The list of Azure subscription IDs to process. If empty all subscriptions will be processed. Can be set in defaults config file.
+    # The list of Azure subscription IDs to process. If empty all subscriptions
+    # will be processed. Can be set in defaults config file.
     [System.Array]$SubscriptionIdsToProcess = @(),
 
     # Prevents that empty resource groups are processed.
@@ -130,22 +132,28 @@ param (
     # Add a Contributor role assignment temporarily for each subscription.
     [switch]$TryMakingUserContributorTemporarily = $false,
 
-    # Also use this LogAnalytics workspace for querying LogAnalytics diagnostic Audit logs.
+    # Also use this LogAnalytics workspace for querying LogAnalytics diagnostic
+    # 'Audit' logs.
     [string]$CentralAuditLogAnalyticsWorkspaceId = $null,
 
-    # Checks for old resources groups with no deployments for a long time and no write/action activities in last 90 days.
+    # Checks for old resources groups with no deployments for a long time and
+    # no write/action activities in last 90 days.
     [switch]$CheckForUnusedResourceGroups = $false,
 
-    # Minimum number of days resources must exist to be considered (default: 4, lower or equal 0 will always check). Can be set in defaults config file.
+    # Minimum number of days resources must exist to be considered (default: 4,
+    # lower or equal 0 will always check). Can be set in defaults config file.
     [int]$MinimumResourceAgeInDaysForChecking = 1,
 
     # Disable the timeout for all delete confirmation prompts (wait forever)
     [switch]$DisableTimeoutForDeleteConfirmationPrompt = $false,
 
-    # Delete resources and groups which have been and are still marked 'suspected' for longer than the defined period. (default: -1, i.e. don't delete). Can be set in defaults config file.
+    # Delete resources and groups which have been and are still marked 
+    # 'suspected' for longer than the defined period. (default: -1, i.e. don't
+    # delete). Can be set in defaults config file.
     [int]$DeleteSuspectedResourcesAndGroupsAfterDays = -1,
 
-    # An optional URL pointing to documentation about the context-specific approach and application of this script. Can be set in defaults config file.
+    # An optional URL pointing to documentation about the context-specific
+    # use of this script. Can be set in defaults config file.
     [string]$DocumentationUrl = $null,
 
     # Use device authentication.

@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-This script removes  all specified tags  from  all specified resources 
-and resource groups.
+This script removes all specified tags from all specified resources and resource
+groups.
 
 .DESCRIPTION
-This script removes  all specified tags  from  all specified resources 
-and resource groups.
+This script removes all specified tags from all specified resources and resource
+groups.
 
-The default values  for some parameters  can be specified  in a config
-file named 'Defaults.json'.
+The default values for some parameters can be specified in a config file named
+'Defaults.json'.
 
 Project Link: https://github.com/thgossler/AzSaveMoney
 Copyright (c) 2022 Thomas Gossler
@@ -34,16 +34,20 @@ Warnings are suppressed by $WarningPreference='SilentlyContinue'.
 
 [CmdletBinding(SupportsShouldProcess)]
 param (
-    # The ID of the Azure AD tenant. Can be set in defaults config file. Can be set in defaults config file.
+    # The ID of the Azure AD tenant. Can be set in defaults config file. Can be
+    # set in defaults config file.
     [string]$DirectoryId,
     
-    # The Azure environment name (default: AzureCloud, for options call "(Get-AzEnvironment).Name"). Can be set in defaults config file.
+    # The Azure environment name (default: AzureCloud, for options call 
+    # "(Get-AzEnvironment).Name"). Can be set in defaults config file.
     [string]$AzEnvironment,
 
-    # The list of Azure subscription IDs to process. If empty all subscriptions will be processed (default: all). Can be set in defaults config file.
+    # The list of Azure subscription IDs to process. If empty all subscriptions
+    # will be processed (default: all). Can be set in defaults config file.
     [System.Array]$SubscriptionIdsToProcess = @(),
 
-    # The list of names of the tags to be removed (default: all 'SubjectForDeletion...' tags). Can be set in defaults config file.
+    # The list of names of the tags to be removed (default: all
+    # 'SubjectForDeletion...' tags). Can be set in defaults config file.
     [System.Array]$TagNamesToRemove = @(
         "SubjectForDeletion"
         "SubjectForDeletion-FindingDate"
