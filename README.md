@@ -15,7 +15,7 @@
     <img src="images/logo.png" alt="Logo" width="80" height="80">
   </a>
 
-  <h3 align="center">AzSaveMoney</h3>
+  <h1 align="center">AzSaveMoney</h1>
 
   <p align="center">
     Clean-up unused resources and save money in your Azure environment.
@@ -30,7 +30,7 @@
   </p>
 </div>
 
-# Overview
+## Overview
 
 The script [`MarkAndDeleteUnusedResources.ps1`](MarkAndDeleteUnusedResources.ps1) checks each Azure resource (group) across all subscriptions and eventually tags it as subject for deletion or (in some cases) deletes it automatically (after confirmation, configurable). Based on the tag's value suspect resources can be confirmed or rejected as subject for deletion and will be considered accordingly in subsequent runs.
 
@@ -113,7 +113,7 @@ The following example process is suggested for large organizations:
 
 The script [`RemoveTagsFromAllResourcesAndGroups.ps1`](RemoveTagsFromAllResourcesAndGroups.ps1) can be used to remove all tags again.
 
-# Contributing
+## Contributing
 
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
@@ -126,11 +126,11 @@ Don't forget to give the project a star :wink: Thanks!
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-# License
+## License
 
 Distributed under the MIT License. See [`LICENSE`](https://github.com/thgossler/AzSaveMoney/blob/main/LICENSE) for more information.
 
-# Contact
+## Contact
 
 Thomas Gossler - [@thgossler](https://twitter.com/thgossler)<br/>
 Project Link: [https://github.com/thgossler/AzSaveMoney](https://github.com/thgossler/AzSaveMoney)
