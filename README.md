@@ -1,3 +1,4 @@
+<!-- SHIELDS -->
 <div align="center">
 
 [![Contributors][contributors-shield]][contributors-url]
@@ -30,9 +31,12 @@
   </p>
 </div>
 
+
 ## Overview
 
-The script [`MarkAndDeleteUnusedResources.ps1`](MarkAndDeleteUnusedResources.ps1) checks each Azure resource (group) across all subscriptions and eventually tags it as subject for deletion or (in some cases) deletes it automatically (after confirmation, configurable). Based on the tag's value suspect resources can be confirmed or rejected as subject for deletion and will be considered accordingly in subsequent runs.
+The script [`MarkAndDeleteUnusedResources.ps1`](MarkAndDeleteUnusedResources.ps1) was primarily written to clean-up large Azure environments and potentially save money and energy along the way. It was inspired by the project [`itoleck/AzureSaveMoney`](https://github.com/itoleck/AzureSaveMoney).
+
+The script checks each Azure resource (group) across all subscriptions and eventually tags it as subject for deletion or (in some cases) deletes it automatically (after confirmation, configurable). Based on the tag's value suspect resources can be confirmed or rejected as subject for deletion and will be considered accordingly in subsequent runs.
 
 Example usage:
 ```powershell
@@ -77,8 +81,6 @@ Example output:
 Example tags:
 ![Example tags](images/Screenshot2.png)
 
-This script was primarily written to clean-up large Azure environments and potentially save money along the way. It was inspired by the project [`itoleck/AzureSaveMoney`](https://github.com/itoleck/AzureSaveMoney).
-
 The script was deliberately written in a single file to ensure ease of use. The log output is written to the host with colors to improve human readability.
 
 The default values for some parameters can be specified in a config file named `Defaults.json`.
@@ -113,6 +115,7 @@ The following example process is suggested for large organizations:
 
 The script [`RemoveTagsFromAllResourcesAndGroups.ps1`](RemoveTagsFromAllResourcesAndGroups.ps1) can be used to remove all tags again.
 
+
 ## Contributing
 
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
@@ -126,14 +129,17 @@ Don't forget to give the project a star :wink: Thanks!
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
+
 ## License
 
 Distributed under the MIT License. See [`LICENSE`](https://github.com/thgossler/AzSaveMoney/blob/main/LICENSE) for more information.
+
 
 ## Contact
 
 Thomas Gossler - [@thgossler](https://twitter.com/thgossler)<br/>
 Project Link: [https://github.com/thgossler/AzSaveMoney](https://github.com/thgossler/AzSaveMoney)
+
 
 <!-- MARKDOWN LINKS & IMAGES (https://www.markdownguide.org/basic-syntax/#reference-style-links) -->
 [contributors-shield]: https://img.shields.io/github/contributors/thgossler/AzSaveMoney.svg
