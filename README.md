@@ -36,7 +36,9 @@
 
 This project is intended to clean up large Azure environments and save money and energy in the process. It was inspired by the project [`itoleck/AzureSaveMoney`](https://github.com/itoleck/AzureSaveMoney) but is not derived from it.
 
-The script [`MarkAndDeleteUnusedResources.ps1`](MarkAndDeleteUnusedResources.ps1) checks each Azure resource (group) across all subscriptions and eventually tags it as subject for deletion or (in some cases) deletes it automatically (after confirmation, configurable). Based on the tag's value suspect resources can be confirmed or rejected as subject for deletion and will be considered accordingly in subsequent runs.
+The script [`MarkAndDeleteUnusedResources.ps1`](MarkAndDeleteUnusedResources.ps1) checks all Azure resources and resource groups across all subscriptions and eventually tags them as subject for deletion or deletes them automatically (after confirmation, configurable). Based on the tag's value suspect resources can be confirmed or rejected as subject for deletion and will be considered accordingly in subsequent runs.
+
+> **Note**: The script supports the -WhatIf parameter to first simulate what it would do. And it was also implemented to be defensive, i.e. by default only empty resource groups are deleted after confirmation, nothing else.
 
 Example usage:
 ```powershell
