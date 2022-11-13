@@ -128,7 +128,7 @@ Don't forget to give the project a star :wink: Thanks!
 
 # License
 
-Distributed under the MIT License. See [`LICENSE`](https://github.com/thgossler/AzSaveMoney/blob/main/LICENSE.txt) for more information.
+Distributed under the MIT License. See [`LICENSE`](https://github.com/thgossler/AzSaveMoney/blob/main/LICENSE) for more information.
 
 # Contact
 
