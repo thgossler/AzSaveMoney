@@ -19,7 +19,7 @@
   <h1 align="center">AzSaveMoney</h1>
 
   <p align="center">
-    Clean-up unused resources and save money in your Azure environment.
+    Clean-up unused resources and save money and energy in your Azure environment.
     <br />
     <a href="https://github.com/thgossler/AzSaveMoney/issues">Report Bug</a>
     ·
