@@ -1,8 +1,12 @@
+<div align="center">
+
 [![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![MIT License][license-shield]][license-url]
+
+</div>
 
 <!-- PROJECT LOGO -->
 <br />
@@ -132,13 +136,13 @@ Thomas Gossler - [@thgossler](https://twitter.com/thgossler)<br/>
 Project Link: [https://github.com/thgossler/AzSaveMoney](https://github.com/thgossler/AzSaveMoney)
 
 <!-- MARKDOWN LINKS & IMAGES (https://www.markdownguide.org/basic-syntax/#reference-style-links) -->
-[contributors-shield]: https://img.shields.io/github/contributors/thgossler/AzSaveMoney.svg?style=for-the-badge
+[contributors-shield]: https://img.shields.io/github/contributors/thgossler/AzSaveMoney.svg
 [contributors-url]: https://github.com/thgossler/AzSaveMoney/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/thgossler/AzSaveMoney.svg?style=for-the-badge
+[forks-shield]: https://img.shields.io/github/forks/thgossler/AzSaveMoney.svg
 [forks-url]: https://github.com/thgossler/AzSaveMoney/network/members
-[stars-shield]: https://img.shields.io/github/stars/thgossler/AzSaveMoney.svg?style=for-the-badge
+[stars-shield]: https://img.shields.io/github/stars/thgossler/AzSaveMoney.svg
 [stars-url]: https://github.com/thgossler/AzSaveMoney/stargazers
-[issues-shield]: https://img.shields.io/github/issues/thgossler/AzSaveMoney.svg?style=for-the-badge
+[issues-shield]: https://img.shields.io/github/issues/thgossler/AzSaveMoney.svg
 [issues-url]: https://github.com/thgossler/AzSaveMoney/issues
-[license-shield]: https://img.shields.io/github/license/thgossler/AzSaveMoney.svg?style=for-the-badge
-[license-url]: https://github.com/thgossler/AzSaveMoney/blob/main/LICENSE.txt
+[license-shield]: https://img.shields.io/github/license/thgossler/AzSaveMoney.svg
+[license-url]: https://github.com/thgossler/AzSaveMoney/blob/main/LICENSE
