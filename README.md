@@ -81,7 +81,7 @@ Example output:
 ![Example output](images/Screenshot.png)
 
 Example tags:
-![Example tags](images/Screenshot2.png)
+![Example tags](images/Screenshot4.png)
 
 The script was deliberately written in a single file to ensure ease of use. The log output is written to the host with colors to improve human readability.
 
