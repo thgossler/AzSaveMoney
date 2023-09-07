@@ -568,18 +568,28 @@ function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$Aggregati
     $delaySeconds = 3
     do {
         if ($retries -ne 3) { Start-Sleep -Seconds $delaySeconds }
-        $retries -= 1
         try {
-            $metric = Get-AzMetric -ResourceId $ResourceId -MetricName $MetricName -AggregationType $AggregationType `
-                -StartTime (Get-Date -AsUTC).AddDays(-$PeriodInDays) -EndTime (Get-Date -AsUTC) `
-                -TimeGrain ([timespan]::FromHours($TimeGrainInHours).ToString()) `
-                -ErrorAction Continue
-        } catch {
             $metric = $null
-            Write-Host "Retrying in $delaySeconds seconds..."
+            if ($retries -eq 1) {
+                # Workaround: Get-AzMetric doesn't work sometimes with TimeGrain specified (https://github.com/Azure/azure-powershell/issues/22750)
+                $metric = Get-AzMetric -ResourceId $ResourceId -MetricName $MetricName -AggregationType $AggregationType `
+                    -StartTime (Get-Date -AsUTC).AddDays(-$PeriodInDays) -EndTime (Get-Date -AsUTC) `
+                    -ErrorAction Continue
+            }
+            else {
+                $metric = Get-AzMetric -ResourceId $ResourceId -MetricName $MetricName -AggregationType $AggregationType `
+                    -StartTime (Get-Date -AsUTC).AddDays(-$PeriodInDays) -EndTime (Get-Date -AsUTC) `
+                    -TimeGrain ([timespan]::FromHours($TimeGrainInHours).ToString()) `
+                    -ErrorAction SilentlyContinue
+            }
+        } catch {}
+        $retries -= 1
+        if ($null -eq $metric -and $retries -gt 0) {
+            Write-Host "$($tab)$($tab)Metric could not be retrieved, retrying in $delaySeconds seconds..." -ForegroundColor DarkGray
         }
     } while ($null -eq $metric -and $retries -gt 0)
     if ($null -eq $metric) {
+        Write-Host "$($tab)$($tab)Failed to get metric '$MetricName' for resource '$ResourceId'" -ForegroundColor Red
         return $null
     }
     $metricData = $metric.Data
