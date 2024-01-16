@@ -6,7 +6,7 @@
   "DeleteSuspectedResourcesAndGroupsAfterDays": 30,
   "AlwaysOnlyMarkForDeletion": true,
   "TryMakingUserContributorTemporarily": true,
-  "EnforceStdout": true,
+  "EnforceStdout": false,
   "AutomationAccountResourceId": "/subscriptions/b53f424g-fe44-4d71-bgfe-8b0360b3c525/resourceGroups/myResourceGroup/providers/Microsoft.Automation/automationAccounts/myAutomationAccount",
   "DocumentationUrl": "https://dev.azure.com/myorg/myproject/_wiki/wikis/Main/12345/SubjectForDeletion-tagging-approach",
   "SubscriptionIdsToProcess": [
