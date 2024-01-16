@@ -83,6 +83,54 @@ Copyright (c) 2022 Thomas Gossler
 License: MIT
 Tags: Azure, cost, optimization, PowerShell
 
+.PARAMETER DirectoryId
+The ID of the Azure AD tenant. Can be set in defaults config file.
+
+.PARAMETER AzEnvironment
+The Azure environment name (for options call "(Get-AzEnvironment).Name"). Can be set in defaults config file.
+
+.PARAMETER SubscriptionIdsToProcess
+The list of Azure subscription IDs to process. If empty all subscriptions will be processed. Can be set in defaults config file.
+
+.PARAMETER DontDeleteEmptyResourceGroups
+Prevents that empty resource groups are processed.
+
+.PARAMETER AlwaysOnlyMarkForDeletion
+Prevent any automatic deletions, only tag as subject for deletion.
+
+.PARAMETER TryMakingUserContributorTemporarily
+Add a Contributor role assignment temporarily for each subscription.
+
+.PARAMETER CentralAuditLogAnalyticsWorkspaceId
+Also use this LogAnalytics workspace for querying LogAnalytics diagnostic 'Audit' logs.
+
+.PARAMETER CheckForUnusedResourceGroups
+Checks for old resources groups with no deployments for a long time and no write/action activities in last 90 days.
+
+.PARAMETER MinimumResourceAgeInDaysForChecking
+Minimum number of days resources must exist to be considered (default: 4, lower or equal 0 will always check). Can be set in defaults config file.
+
+.PARAMETER DisableTimeoutForDeleteConfirmationPrompt
+Disable the timeout for all delete confirmation prompts (wait forever)
+
+.PARAMETER DeleteSuspectedResourcesAndGroupsAfterDays
+Delete resources and groups which have been and are still marked 'suspected' for longer than the defined period. (default: -1, i.e. don't delete). Can be set in defaults config file.
+
+.PARAMETER DocumentationUrl
+An optional URL pointing to documentation about the context-specific use of this script. Can be set in defaults config file.
+
+.PARAMETER UseDeviceAuthentication
+Use device authentication.
+
+.PARAMETER AutomationAccountResourceId
+Use the system-assigned managed identity of this Azure Automation account for authentication (full resource ID).
+
+.PARAMETER ServicePrincipalCredential
+Use these service principal credentials for authentication.
+
+.PARAMETER EnforceStdout
+Redirect all displayed text (Write-HostOrOutput) to standard output.
+
 .INPUTS
 Azure resources/groups across all (or specified) subscriptions.
 
@@ -121,7 +169,7 @@ param (
 
     # The list of Azure subscription IDs to process. If empty all subscriptions
     # will be processed. Can be set in defaults config file.
-    [System.Array]$SubscriptionIdsToProcess = @(),
+    [string[]]$SubscriptionIdsToProcess = @(),
 
     # Prevents that empty resource groups are processed.
     [switch]$DontDeleteEmptyResourceGroups = $false,
@@ -159,9 +207,32 @@ param (
     # Use device authentication.
     [switch]$UseDeviceAuthentication,
 
+    # Use the system-assigned managed identity of this Azure Automation account for authentication (full resource ID).
+    [string]$AutomationAccountResourceId = $null,
+
     # Use these service principal credentials for authentication.
-    [PSCredential]$ServicePrincipalCredential = $null
+    [PSCredential]$ServicePrincipalCredential = $null,
+
+    # Redirect all displayed text (Write-HostOrOutput) to standard output.
+    [switch]$EnforceStdout
 )
+
+function Write-HostOrOutput {
+    param (
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$Message,
+        [Parameter(Mandatory = $false, Position = 1)]
+        [System.ConsoleColor]$ForegroundColor,
+        [Parameter(Mandatory = $false, Position = 2)]
+        [System.ConsoleColor]$BackgroundColor
+    )
+    if ($EnforceStdout.IsPresent) {
+        Write-Output $Message
+    }
+    else {
+        Write-Host $Message -ForegroundColor $ForegroundColor -BackgroundColor $BackgroundColor
+    }
+}
 
 # Get configured defaults from config file
 $defaultsConfig = (Test-Path -Path $PSScriptRoot/Defaults.json -PathType Leaf) ? 
@@ -177,6 +248,21 @@ if ([string]::IsNullOrWhiteSpace($AzEnvironment)) {
     else {
         $AzEnvironment = 'AzureCloud'
     }
+}
+if ($defaultsConfig.PSobject.Properties.name -match "DontDeleteEmptyResourceGroups") {
+    try { $DontDeleteEmptyResourceGroups = [System.Convert]::ToBoolean($defaultsConfig.DontDeleteEmptyResourceGroups) } catch {}
+}
+if ($defaultsConfig.PSobject.Properties.name -match "AlwaysOnlyMarkForDeletion") {
+    try { $AlwaysOnlyMarkForDeletion = [System.Convert]::ToBoolean($defaultsConfig.AlwaysOnlyMarkForDeletion) } catch {}
+}
+if ($defaultsConfig.PSobject.Properties.name -match "TryMakingUserContributorTemporarily") {
+    try { $TryMakingUserContributorTemporarily = [System.Convert]::ToBoolean($defaultsConfig.TryMakingUserContributorTemporarily) } catch {}
+}
+if ($defaultsConfig.PSobject.Properties.name -match "CheckForUnusedResourceGroups") {
+    try { $CheckForUnusedResourceGroups = [System.Convert]::ToBoolean($defaultsConfig.CheckForUnusedResourceGroups) } catch {}
+}
+if ($defaultsConfig.PSobject.Properties.name -match "EnforceStdout") {
+    try { $EnforceStdout = [System.Convert]::ToBoolean($defaultsConfig.EnforceStdout) } catch {}
 }
 if ([string]::IsNullOrWhiteSpace($CentralAuditLogAnalyticsWorkspaceId) -and 
     ![string]::IsNullOrWhiteSpace($defaultsConfig.CentralAuditLogAnalyticsWorkspaceId)) 
@@ -195,10 +281,22 @@ if ($SubscriptionIdsToProcess.Count -lt 1 -and $defaultsConfig.SubscriptionIdsTo
 {
     $SubscriptionIdsToProcess = $defaultsConfig.SubscriptionIdsToProcess
 }
+if ([string]::IsNullOrWhiteSpace($AutomationAccountResourceId) -and 
+    ![string]::IsNullOrWhiteSpace($defaultsConfig.AutomationAccountResourceId)) {
+    $AutomationAccountResourceId = $defaultsConfig.AutomationAccountResourceId
+}
 
 # Alert invalid parameter combinations
+if ($null -ne $ServicePrincipalCredential -and $UseSystemAssignedIdentity.IsPresent) {
+    throw [System.ApplicationException]::new("Parameters 'ServicePrincipalCredential' and 'UseSystemAssignedIdentity' cannot be used together")
+    return
+}
 if ($null -ne $ServicePrincipalCredential -and $UseDeviceAuthentication.IsPresent) {
-    throw [System.ApplicationException]::new("Parameters 'UseDeviceAuthentication' and 'ServicePrincipalCredential' cannot be used together")
+    throw [System.ApplicationException]::new("Parameters 'ServicePrincipalCredential' and 'UseDeviceAuthentication' cannot be used together")
+    return
+}
+if ($UseDeviceAuthentication.IsPresent -and $UseSystemAssignedIdentity.IsPresent) {
+    throw [System.ApplicationException]::new("Parameters 'UseDeviceAuthentication' and 'UseSystemAssignedIdentity' cannot be used together")
     return
 }
 if ($null -ne $ServicePrincipalCredential -and [string]::IsNullOrEmpty($DirectoryId)) {
@@ -235,7 +333,6 @@ if (![string]::IsNullOrWhiteSpace($DocumentationUrl)) {
 }
 
 $tab = '    '
-
 
 ######################################################################
 # Resource Type Hooks
@@ -277,7 +374,7 @@ function Test-ResourceActionHook-microsoft-compute-images($Resource) {
     try {
         $sourceVm = Get-AzResource -ResourceId $Resource.properties.sourceVirtualMachine.Id -ErrorAction Ignore -WarningAction Ignore
         if ($sourceVm) {
-            Write-Host "$($tab)$($tab)Source VM of a usually generalized image is still existing" -ForegroundColor DarkGray
+            Write-HostOrOutput "$($tab)$($tab)Source VM of a usually generalized image is still existing" -ForegroundColor DarkGray
             return [ResourceAction]::markForDeletion, "The source VM (usually generalized) of the image still exists."
         }
     }
@@ -510,7 +607,7 @@ function Test-ResourceActionHook-microsoft-servicebus-namespaces($Resource) {
     $result = [ResourceAction]::none
     foreach ($queue in $queues) {
         if ($queue.Status -ine "Active") {
-            Write-Host "$($tab)$($tab)Queue '$($queue.name)' is in status '$($queue.Status)'" -ForegroundColor DarkGray
+            Write-HostOrOutput "$($tab)$($tab)Queue '$($queue.name)' is in status '$($queue.Status)'" -ForegroundColor DarkGray
             $result = [ResourceAction]::markForSuspectSubResourceCheck, "The service bus namespace has at least one inactive queue."
         }
     }
@@ -533,7 +630,7 @@ function Test-ResourceActionHook-microsoft-web-sites-functionapp($Resource) {
         }
         $functions = Get-AzResource @GetAzResourceParameters
         if (!$functions) {
-            Write-Host "$($tab)$($tab)Function app has no functions" -ForegroundColor DarkGray
+            Write-HostOrOutput "$($tab)$($tab)Function app has no functions" -ForegroundColor DarkGray
             return [ResourceAction]::markForDeletion, "The function app has no functions."
         }
     }
@@ -568,8 +665,15 @@ function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$Aggregati
     $delaySeconds = 3
     do {
         if ($retries -ne 3) { Start-Sleep -Seconds $delaySeconds }
+        $retries -= 1
         try {
+            $metric = Get-AzMetric -ResourceId $ResourceId -MetricName $MetricName -AggregationType $AggregationType `
+                -StartTime (Get-Date -AsUTC).AddDays(-$PeriodInDays) -EndTime (Get-Date -AsUTC) `
+                -TimeGrain ([timespan]::FromHours($TimeGrainInHours).ToString()) `
+                -ErrorAction Continue
+        } catch {
             $metric = $null
+            Write-HostOrOutput "Retrying in $delaySeconds seconds..."
             if ($retries -eq 1) {
                 # Workaround: Get-AzMetric doesn't work sometimes with TimeGrain specified (https://github.com/Azure/azure-powershell/issues/22750)
                 $metric = Get-AzMetric -ResourceId $ResourceId -MetricName $MetricName -AggregationType $AggregationType `
@@ -582,14 +686,14 @@ function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$Aggregati
                     -TimeGrain ([timespan]::FromHours($TimeGrainInHours).ToString()) `
                     -ErrorAction SilentlyContinue
             }
-        } catch {}
+        }
         $retries -= 1
         if ($null -eq $metric -and $retries -gt 0) {
-            Write-Host "$($tab)$($tab)Metric could not be retrieved, retrying in $delaySeconds seconds..." -ForegroundColor DarkGray
+            Write-HostOrOutput "$($tab)$($tab)Metric could not be retrieved, retrying in $delaySeconds seconds..." -ForegroundColor DarkGray
         }
     } while ($null -eq $metric -and $retries -gt 0)
     if ($null -eq $metric) {
-        Write-Host "$($tab)$($tab)Failed to get metric '$MetricName' for resource '$ResourceId'" -ForegroundColor Red
+        Write-HostOrOutput "$($tab)$($tab)Failed to get metric '$MetricName' for resource '$ResourceId'" -ForegroundColor Red
         return $null
     }
     $metricData = $metric.Data
@@ -648,8 +752,8 @@ function Add-SubjectForDeletionTags
         }
         $result = Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $newTags -Operation Merge -WhatIf:$WhatIfPreference
         if (!$SuppressHostOutput -and $result) {
-            Write-Host "$($tab)$($tab)$($WhatIfHint)Added tags " -NoNewline
-            Write-Host ($newTags | ConvertTo-Json -Compress) -ForegroundColor White
+            Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Added tags " -NoNewline
+            Write-HostOrOutput ($newTags | ConvertTo-Json -Compress) -ForegroundColor White
         }
     }
     # Remove existing tags which are not specified
@@ -718,7 +822,7 @@ function Get-UserConfirmationWithTimeout(
     }
     else {
         try {
-            Write-Host "$([Environment]::NewLine)Continue?  'y' = yes, 'a' = yes to all, <Any> = no : " -NoNewline -ForegroundColor Red
+            Write-HostOrOutput "$([Environment]::NewLine)Continue?  'y' = yes, 'a' = yes to all, <Any> = no : " -NoNewline -ForegroundColor Red
 
             # Read key input from host
             $timer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -744,17 +848,17 @@ function Get-UserConfirmationWithTimeout(
             }
             $timer.Stop()
             $timer = $null
-            Write-Host ""
+            Write-HostOrOutput ""
 
             $answerTimeStamp = (Get-Date -AsUTC)
             if (!$DisableTimeout -and `
                 $answerTimeStamp.Subtract($questionTimeStamp) -gt [timespan]::FromSeconds($TimeoutSeconds)) 
             {
-                Write-Host "No response within $($TimeoutSeconds)s (the situation may have changed), assuming 'no'..."
+                Write-HostOrOutput "No response within $($TimeoutSeconds)s (the situation may have changed), assuming 'no'..."
                 $choice = 'n'
             }
         } catch {
-            Write-Host "Asking user for confirmation failed, assuming 'no'..."
+            Write-HostOrOutput "Asking user for confirmation failed, assuming 'no'..."
             $choice = 'n'
         }
     }
@@ -788,11 +892,22 @@ if (!((Get-AzEnvironment).Name -contains $AzEnvironment)) {
     throw [System.ApplicationException]::new("Invalid Azure environment name '$AzEnvironment'")
     return
 }
-    
+
+Write-HostOrOutput "Signing-in to Azure..."
+
 $loggedIn = $false
+$null = Disable-AzContextAutosave -Scope Process # ensures that an AzContext is not inherited
+$useSystemIdentity = ![string]::IsNullOrWhiteSpace($AutomationAccountResourceId)
 $useDeviceAuth = $UseDeviceAuthentication.IsPresent
 $warnAction = $useDeviceAuth ? 'Continue' : 'SilentlyContinue'
-if ($null -eq $ServicePrincipalCredential) {
+if ($useSystemIdentity -eq $true) {
+    # Use system-assigned identity
+    Write-HostOrOutput "Using system-assigned identity..."
+    $loggedIn = Connect-AzAccount -Identity -WarningAction $warnAction -WhatIf:$false
+}
+elseif ($null -eq $ServicePrincipalCredential) {
+    # Use user authentication (interactive or device)
+    Write-HostOrOutput "Using user authentication..."
     if (![string]::IsNullOrWhiteSpace($DirectoryId)) {
         $loggedIn = Connect-AzAccount -Environment $AzEnvironment -UseDeviceAuthentication:$useDeviceAuth -TenantId $DirectoryId -WarningAction $warnAction -WhatIf:$false
     }
@@ -802,14 +917,17 @@ if ($null -eq $ServicePrincipalCredential) {
     }
 }
 else {
+    # Use service principal authentication
+    Write-HostOrOutput "Using service principal authentication..."
     $loggedIn = Connect-AzAccount -Environment $AzEnvironment -TenantId $DirectoryId -ServicePrincipal -Credential $ServicePrincipalCredential -WhatIf:$false
 }
 if (!$loggedIn) {
     throw [System.ApplicationException]::new("Sign-in failed")
     return
 }
+Write-HostOrOutput "Signed in successfully."
 
-Write-Host "$([Environment]::NewLine)Getting Azure subscriptions..."
+Write-HostOrOutput "$([Environment]::NewLine)Getting Azure subscriptions..."
 $allSubscriptions = @(Get-AzSubscription -TenantId $DirectoryId | Where-Object -Property State -NE Disabled | Sort-Object -Property Name)
 
 if ($allSubscriptions.Count -lt 1) {
@@ -818,32 +936,38 @@ if ($allSubscriptions.Count -lt 1) {
 }
 
 if ($null -ne $SubscriptionIdsToProcess -and $SubscriptionIdsToProcess.Count -gt 0) {
-    Write-Host "Only the following $($SubscriptionIdsToProcess.Count) Azure subscriptions will be processed (according to the specified filter):"
+    Write-HostOrOutput "Only the following $($SubscriptionIdsToProcess.Count) of all $($allSubscriptions.Count) Azure subscriptions will be processed (according to the specified filter):"
     foreach ($s in $SubscriptionIdsToProcess) {
-        Write-Host "$($tab)$s"
+        Write-HostOrOutput "$($tab)$s"
     }
 }
 else {
-    Write-Host "All Azure subscriptions will be processed"
+    Write-HostOrOutput "All Azure subscriptions will be processed"
 }
 
 # Filled during processing and reported at the end
 $usedResourceTypesWithoutHook = [System.Collections.ArrayList]@()
 $signedInIdentity = $null
-if ($null -eq $ServicePrincipalCredential) {
-    $signedInIdentity = Get-AzADUser -SignedIn
+if ($useSystemIdentity) {
+    Write-HostOrOutput "Getting system-managed identity of the automation account..."
+    $signedInIdentity = Get-AzSystemAssignedIdentity -Scope $AutomationAccountResourceId
 }
-else {
+elseif ($null -ne $ServicePrincipalCredential) {
+    Write-HostOrOutput "Getting signed-in service principal..."
     $signedInIdentity = Get-AzADServicePrincipal -ApplicationId (Get-AzContext).Account.Id
 }
-
+else {
+    Write-HostOrOutput "Getting signed-in user identity..."
+    $signedInIdentity = Get-AzADUser -SignedIn
+}
+Write-HostOrOutput "Identity Object ID: $($signedInIdentity.Id)"
 
 foreach ($sub in $allSubscriptions) {
     if ($null -ne $SubscriptionIdsToProcess -and $SubscriptionIdsToProcess.Count -gt 0 -and !$SubscriptionIdsToProcess.Contains($sub.Id)) {
         continue
     }
-    Write-Host "$([Environment]::NewLine)vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv" -ForegroundColor Cyan
-    Write-Host "Processing subscription '$($sub.Name)' ($($sub.Id))..." -ForegroundColor Cyan
+    Write-HostOrOutput "$([Environment]::NewLine)vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv" -ForegroundColor Cyan
+    Write-HostOrOutput "Processing subscription '$($sub.Name)' ($($sub.Id))..." -ForegroundColor Cyan
 
     # get all resources in current subscription
     Select-AzSubscription -SubscriptionName $sub.Name -TenantId $DirectoryId -WhatIf:$false | Out-Null
@@ -857,7 +981,7 @@ foreach ($sub in $allSubscriptions) {
                 $tempRoleAssignment = New-AzRoleAssignment -ObjectId $signedInIdentity.Id -Scope $subscriptionResourceId -RoleDefinitionName Contributor `
                     -Description "Temporary permission to create tags on resources and delete empty resource groups" -ErrorAction SilentlyContinue
                 if ($tempRoleAssignment) {
-                    Write-Host "$($tab)$($WhatIfHint)Contributor role was temporarily assigned to the signed-in identity '$($ServicePrincipalCredential ? $signedInIdentity.ApplicationId : $signedInIdentity.UserPrincipalName)'" -ForegroundColor DarkGray
+                    Write-HostOrOutput "$($tab)$($WhatIfHint)Contributor role was temporarily assigned to the signed-in identity '$($ServicePrincipalCredential ? $signedInIdentity.ApplicationId : $signedInIdentity.UserPrincipalName)'" -ForegroundColor DarkGray
                 }
             }
         }
@@ -878,7 +1002,7 @@ foreach ($sub in $allSubscriptions) {
         $resources.AddRange($queryResult.Data)
     } while ($null -ne $skipToken)
 
-    Write-Host "$($tab)Number of resources to process: $($resources.Count)"
+    Write-HostOrOutput "$($tab)Number of resources to process: $($resources.Count)"
     if ($resources.Count -lt 1) {
         continue
     }
@@ -886,9 +1010,9 @@ foreach ($sub in $allSubscriptions) {
     $processedResourceGroups = [System.Collections.ArrayList]@()
 
     foreach ($resource in $resources) {
-        Write-Host "$($tab)Processing resource '" -NoNewline
-        Write-Host $($resource.name) -NoNewline -ForegroundColor White
-        Write-Host "' (type: $($resource.type), resource group: $($resource.resourceGroup))..."
+        Write-HostOrOutput "$($tab)Processing resource '" -NoNewline
+        Write-HostOrOutput $($resource.name) -NoNewline -ForegroundColor White
+        Write-HostOrOutput "' (type: $($resource.type), resource group: $($resource.resourceGroup))..."
         $resourceTypeName = $resource.type
         $resourceKindName = $resource.kind
 
@@ -909,7 +1033,7 @@ foreach ($sub in $allSubscriptions) {
                         $activityLogs = Get-AzActivityLog -ResourceGroupName $resourceGroupName -StartTime (Get-Date -AsUTC).AddDays(-90) -EndTime (Get-Date -AsUTC)
                         $activelyUsed = $activityLogs | Where-Object { $_.Authorization.Action -imatch '^(?:(?!tags|roleAssignments).)*\/(write|action)$' }
                         if (!$activelyUsed) {
-                            Write-Host "$($tab)$($tab)$($WhatIfHint)Marking potentially unused resource group '$resourceGroupName' for deletion..." -ForegroundColor Yellow
+                            Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Marking potentially unused resource group '$resourceGroupName' for deletion..." -ForegroundColor Yellow
                             Add-SubjectForDeletionTags -ResourceOrGroup $rg -SuppressHostOutput -WhatIf:$WhatIfPreference `
                                 -Reason "no deployments for $resourceGroupOldAfterDays days and no write/action activities for 3 months"
                             $rgJustTagged = $true
@@ -963,17 +1087,17 @@ foreach ($sub in $allSubscriptions) {
                     $lastEvalDateTime = (Get-Date -AsUTC)
                     if ([datetime]::TryParse($lastEvalDateString, [ref]$lastEvalDateTime)) {
                         if ((Get-Date -AsUTC).Subtract($lastEvalDateTime) -gt [timespan]::FromDays($DeleteSuspectedResourcesAndGroupsAfterDays)) {
-                            Write-Host "$($tab)$($tab)--> review deadline reached for this suspected resource"
+                            Write-HostOrOutput "$($tab)$($tab)--> review deadline reached for this suspected resource"
                             $lastUserConfirmationResult = Get-UserConfirmationWithTimeout `
                                 -DisableTimeout:$DisableTimeoutForDeleteConfirmationPrompt `
                                 -LastConfirmationResult $lastUserConfirmationResult
                             if ($lastUserConfirmationResult -ne [UserConfirmationResult]::No) {
-                                Write-Host "$($tab)$($tab)$($WhatIfHint)Resource is being deleted..." -ForegroundColor Red
+                                Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Resource is being deleted..." -ForegroundColor Red
                                 Remove-AzResource -ResourceId $resource.ResourceId -Force -AsJob -WhatIf:$WhatIfPreference | Out-Null
                                 continue  # skip to next resource
                             }
                             else {
-                                Write-Host "$($tab)$($tab)Deletion cancelled by user"
+                                Write-HostOrOutput "$($tab)$($tab)Deletion cancelled by user"
                             }
                         }
                     }
@@ -1004,10 +1128,10 @@ foreach ($sub in $allSubscriptions) {
             }
             else {
                 # Resource doesn't have the specified minimum age for checking
-                Write-Host "$($tab)$($tab)Resource has not reached the minimum age and is ignored" -ForegroundColor DarkGray
+                Write-HostOrOutput "$($tab)$($tab)Resource has not reached the minimum age and is ignored" -ForegroundColor DarkGray
                 $action = [ResourceAction]::none
             }
-            Write-Host "$($tab)$($tab)--> action: " -NoNewline
+            Write-HostOrOutput "$($tab)$($tab)--> action: " -NoNewline
             $color = [ConsoleColor]::Gray
             switch ($action) {
                 none { $color = [ConsoleColor]::Green }
@@ -1017,33 +1141,33 @@ foreach ($sub in $allSubscriptions) {
                 delete { $color = [ConsoleColor]::Red }
                 Default {}
             }
-            Write-Host $action.ToString() -ForegroundColor $color -NoNewline
-            if (![string]::IsNullOrWhiteSpace($reason)) { Write-Host " (reason: '$reason')" } else { Write-Host "" }
+            Write-HostOrOutput $action.ToString() -ForegroundColor $color -NoNewline
+            if (![string]::IsNullOrWhiteSpace($reason)) { Write-HostOrOutput " (reason: '$reason')" } else { Write-HostOrOutput "" }
         }
         else {
-            Write-Host "$($tab)$($tab)--> no matching test hook for this type of resource" -ForegroundColor DarkGray
+            Write-HostOrOutput "$($tab)$($tab)--> no matching test hook for this type of resource" -ForegroundColor DarkGray
             $usedResourceTypesWithoutHook.Add("Type: '$resourceTypeName' (hook name: 'Test-ResourceActionHook-$normalizedResourceTypeName')") | Out-Null
         }
 
         # delete or mark resource accordingly
         switch ($action) {
             "markForDeletion" {
-                Write-Host "$($tab)$($tab)$($WhatIfHint)Marking resource for deletion..."
+                Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Marking resource for deletion..."
                 Add-SubjectForDeletionTags -ResourceOrGroup $resource -Reason $reason -WhatIf:$WhatIfPreference
             }
             "markForSuspectSubResourceCheck" {
-                Write-Host "$($tab)$($tab)$($WhatIfHint)Marking resource for check of suspect sub resources..."
+                Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Marking resource for check of suspect sub resources..."
                 Add-SubjectForDeletionTags -ResourceOrGroup $resource -Status [SubjectForDeletionStatus]::suspectedSubResources -Reason $reason -WhatIf:$WhatIfPreference
             }
             "delete" {
-                Write-Host "$($tab)$($tab)$($WhatIfHint)Deleting resource..."
+                Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Deleting resource..."
                 $lastUserConfirmationResult = Get-UserConfirmationWithTimeout -DisableTimeout:$DisableTimeoutForDeleteConfirmationPrompt `
                     -LastConfirmationResult $lastUserConfirmationResult
                 if ($lastUserConfirmationResult -ne [UserConfirmationResult]::No) {
                     Remove-AzResource -ResourceId $resource.ResourceId -Force -AsJob -WhatIf:$WhatIfPreference | Out-Null
                 }
                 else {
-                    Write-Host "$($tab)$($tab)Deletion rejected by user"
+                    Write-HostOrOutput "$($tab)$($tab)Deletion rejected by user"
                 }
             }
             default {
@@ -1057,7 +1181,7 @@ foreach ($sub in $allSubscriptions) {
     }
 
     # Process resource groups
-    Write-Host "$($tab)Processing resource groups..."
+    Write-HostOrOutput "$($tab)Processing resource groups..."
     $resourceGroups = Get-AzResourceGroup
     foreach ($resourceGroup in $resourceGroups) {
         $rgname = $resourceGroup.ResourceGroupName
@@ -1071,16 +1195,16 @@ foreach ($sub in $allSubscriptions) {
                 $lastEvalDateTime = (Get-Date -AsUTC)
                 if ([datetime]::TryParse($lastEvalDateString, [ref]$lastEvalDateTime)) {
                     if ((Get-Date -AsUTC).Subtract($lastEvalDateTime) -gt [timespan]::FromDays($DeleteSuspectedResourcesAndGroupsAfterDays)) {
-                        Write-Host "$($tab)$($tab)--> review deadline reached for this suspected resource group '$rgname'"
+                        Write-HostOrOutput "$($tab)$($tab)--> review deadline reached for this suspected resource group '$rgname'"
                         $lastUserConfirmationResult = Get-UserConfirmationWithTimeout -DisableTimeout:$DisableTimeoutForDeleteConfirmationPrompt `
                             -LastConfirmationResult $lastUserConfirmationResult
                         if ($lastUserConfirmationResult -ne [UserConfirmationResult]::No) {
-                            Write-Host "$($tab)$($tab)$($WhatIfHint)Resource group is being deleted..." -ForegroundColor Red
+                            Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Resource group is being deleted..." -ForegroundColor Red
                             Remove-AzResourceGroup -Name $resourceGroup.ResourceGroupName -Force -AsJob -WhatIf:$WhatIfPreference | Out-Null
                             continue  # skip to next resource group
                         }
                         else {
-                            Write-Host "$($tab)$($tab)Deletion cancelled by user"
+                            Write-HostOrOutput "$($tab)$($tab)Deletion cancelled by user"
                         }
                     }
                 }
@@ -1093,41 +1217,41 @@ foreach ($sub in $allSubscriptions) {
             $resourceCount = (Get-AzResource -ResourceGroupName $rgname).Count
             if ($resourceCount -eq 0) {
                 if ($AlwaysOnlyMarkForDeletion -or $DontDeleteEmptyResourceGroups) {
-                    Write-Host "$($tab)$($tab)--> action: " -NoNewline
-                    Write-Host ([ResourceAction]::markForDeletion).toString() -ForegroundColor Yellow
-                    Write-Host "$($tab)$($tab)$($WhatIfHint)Marking empty resource group '$rgname' for deletion..."
+                    Write-HostOrOutput "$($tab)$($tab)--> action: " -NoNewline
+                    Write-HostOrOutput ([ResourceAction]::markForDeletion).toString() -ForegroundColor Yellow
+                    Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Marking empty resource group '$rgname' for deletion..."
                     Add-SubjectForDeletionTags -ResourceOrGroup $resourceGroup -Reason "group is empty" -WhatIf:$WhatIfPreference
                 }
                 else {
-                    Write-Host "$($tab)$($tab)--> action: " -NoNewline
-                    Write-Host ([ResourceAction]::delete).ToString() -ForegroundColor Red
-                    Write-Host "$($tab)$($tab)$($WhatIfHint)Deleting empty resource group '$rgname'..."
+                    Write-HostOrOutput "$($tab)$($tab)--> action: " -NoNewline
+                    Write-HostOrOutput ([ResourceAction]::delete).ToString() -ForegroundColor Red
+                    Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Deleting empty resource group '$rgname'..."
                     $lastUserConfirmationResult = Get-UserConfirmationWithTimeout -DisableTimeout:$DisableTimeoutForDeleteConfirmationPrompt `
                         -LastConfirmationResult $lastUserConfirmationResult
                     if ($lastUserConfirmationResult -ne [UserConfirmationResult]::No) {
                         Remove-AzResourceGroup -Id $resourceGroup.ResourceId -Force -AsJob -WhatIf:$WhatIfPreference | Out-Null
                     }
                     else {
-                        Write-Host "$($tab)$($tab)Deletion rejected by user"
+                        Write-HostOrOutput "$($tab)$($tab)Deletion rejected by user"
                     }
                 }
             }
         }
     }
-    Write-Host "$($tab)$($tab)Done"
+    Write-HostOrOutput "$($tab)$($tab)Done"
 
     if ($TryMakingUserContributorTemporarily -and $null -ne $tempRoleAssignment -and $PSCmdlet.ShouldProcess($tempRoleAssignment.Scope, "Remove Contributor role assignment")) {
         Remove-AzRoleAssignment -InputObject $tempRoleAssignment -ErrorAction SilentlyContinue | Out-Null
-        Write-Host "$($tab)$($WhatIfHint)Contributor role was removed again from the signed-in identity '$($ServicePrincipalCredential ? $signedInIdentity.ApplicationId : $signedInIdentity.UserPrincipalName)'" -ForegroundColor DarkGray
+        Write-HostOrOutput "$($tab)$($WhatIfHint)Contributor role was removed again from the signed-in identity '$($ServicePrincipalCredential ? $signedInIdentity.ApplicationId : $signedInIdentity.UserPrincipalName)'" -ForegroundColor DarkGray
     }
 }
 
 # Wait for still running resource deletion jobs
 $runningJobs = Get-Job -State Running
 if ($runningJobs.Count -gt 0) {
-    Write-Host "$([Environment]::NewLine)Waiting for all background jobs to complete..."
+    Write-HostOrOutput "$([Environment]::NewLine)Waiting for all background jobs to complete..."
     while ($runningJobs.Count -gt 0) {
-        Write-Host "$($runningJobs.Count) jobs still running..." -ForegroundColor DarkGray
+        Write-HostOrOutput "$($runningJobs.Count) jobs still running..." -ForegroundColor DarkGray
         $jobs = Get-Job -State Completed
         $jobs | Receive-Job | Out-null
         $jobs | Remove-Job | Out-null
@@ -1137,10 +1261,10 @@ if ($runningJobs.Count -gt 0) {
 }
 
 if ($usedResourceTypesWithoutHook.Count -gt 0) {
-    Write-Host "$([System.Environment]::NewLine)Discovered resource types without matching hook:"
+    Write-HostOrOutput "$([System.Environment]::NewLine)Discovered resource types without matching hook:"
     foreach ($resourceType in ($usedResourceTypesWithoutHook | Sort-Object -Unique)) {
-        Write-Host "$($tab)$resourceType"
+        Write-HostOrOutput "$($tab)$resourceType"
     }
 }
 
-Write-Host "$([System.Environment]::NewLine)Finished." -ForegroundColor Green
+Write-HostOrOutput "$([System.Environment]::NewLine)Finished." -ForegroundColor Green
