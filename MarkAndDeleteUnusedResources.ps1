@@ -222,9 +222,9 @@ function Write-HostOrOutput {
         [Parameter(Mandatory = $true, Position = 0)]
         [string]$Message,
         [Parameter(Mandatory = $false, Position = 1)]
-        [System.ConsoleColor]$ForegroundColor,
+        [System.ConsoleColor]$ForegroundColor = [System.ConsoleColor]::Gray,
         [Parameter(Mandatory = $false, Position = 2)]
-        [System.ConsoleColor]$BackgroundColor
+        [System.ConsoleColor]$BackgroundColor = [System.ConsoleColor]::Black
     )
     if ($EnforceStdout.IsPresent) {
         Write-Output $Message
