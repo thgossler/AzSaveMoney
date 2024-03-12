@@ -219,18 +219,20 @@ param (
 
 function Write-HostOrOutput {
     param (
-        [Parameter(Mandatory = $true, Position = 0)]
-        [string]$Message,
+        [Parameter(Mandatory = $false, Position = 0)]
+        [string]$Message = "",
         [Parameter(Mandatory = $false, Position = 1)]
         [System.ConsoleColor]$ForegroundColor = [System.ConsoleColor]::Gray,
         [Parameter(Mandatory = $false, Position = 2)]
-        [System.ConsoleColor]$BackgroundColor = [System.ConsoleColor]::Black
+        [System.ConsoleColor]$BackgroundColor = [System.ConsoleColor]::Black,
+        [Parameter(Mandatory = $false, Position = 3)]
+        [switch]$NoNewline = $false
     )
     if ($EnforceStdout.IsPresent) {
-        Write-Output $Message
+        Write-Output $Message -NoNewline:$NoNewline
     }
     else {
-        Write-Host $Message -ForegroundColor $ForegroundColor -BackgroundColor $BackgroundColor
+        Write-Host $Message -ForegroundColor $ForegroundColor -BackgroundColor $BackgroundColor -NoNewline:$NoNewline
     }
 }
 
@@ -822,7 +824,7 @@ function Get-UserConfirmationWithTimeout(
     }
     else {
         try {
-            Write-HostOrOutput "$([Environment]::NewLine)Continue?  'y' = yes, 'a' = yes to all, <Any> = no : " -NoNewline -ForegroundColor Red
+            Write-HostOrOutput "$([Environment]::NewLine)Continue?  'y' = yes, 'a' = yes to all, <Any> = no : " -ForegroundColor Red -NoNewline
 
             # Read key input from host
             $timer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -1011,7 +1013,7 @@ foreach ($sub in $allSubscriptions) {
 
     foreach ($resource in $resources) {
         Write-HostOrOutput "$($tab)Processing resource '" -NoNewline
-        Write-HostOrOutput $($resource.name) -NoNewline -ForegroundColor White
+        Write-HostOrOutput $($resource.name) -ForegroundColor White -NoNewline
         Write-HostOrOutput "' (type: $($resource.type), resource group: $($resource.resourceGroup))..."
         $resourceTypeName = $resource.type
         $resourceKindName = $resource.kind
@@ -1121,6 +1123,7 @@ foreach ($sub in $allSubscriptions) {
             }
 
             if ($hasMinimumAge) {
+                # Execute test hook for current resource type
                 $action, $reason = Invoke-Command -ScriptBlock $hook -ArgumentList $resource
                 if ($action -eq [ResourceAction]::delete -and $AlwaysOnlyMarkForDeletion) {
                     $action = [ResourceAction]::markForDeletion
