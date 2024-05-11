@@ -109,7 +109,7 @@ The following example process is suggested for large organizations:
 1. **RUN** the script regularly
 2. **ALERT** `suspected` or `suspectedSubResources` resources to resource owners
 3. **MANUAL RESOLUTION** by owners by reviewing and changing the `SubjectForDeletion` tag value to one of the following predefined terms (case-sensitive!):
-   - `rejected`: Resource is needed and shall NOT be deleted (this status will not be overwritten in subsequent runs for 6 months after `SubjectForDeletion-FindingDate`)
+   - `rejected`: Resource is needed and shall NOT be deleted (this status will not be overwritten in subsequent runs, except if configured to be reset e.g. every 6 months after `SubjectForDeletion-FindingDate`)
    - `confirmed`: Resource shall be deleted (will be automatically deleted in the next run)
 4. **AUTO-DELETION/REEVALUATION**: Subsequent script runs will check all resources again with the following special handling for status:
    - `confirmed`: resource will be deleted
