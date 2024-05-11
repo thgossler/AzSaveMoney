@@ -116,6 +116,12 @@ Disable the timeout for all delete confirmation prompts (wait forever)
 .PARAMETER DeleteSuspectedResourcesAndGroupsAfterDays
 Delete resources and groups which have been and are still marked 'suspected' for longer than the defined period. (default: -1, i.e. don't delete). Can be set in defaults config file.
 
+.PARAMETER EnableRegularResetOfRejectedState
+Specifies that a 'rejected' status shall be reset to 'suspected' after the specified period of time to avoid that unused resources are remaining undetected forever.
+
+.PARAMETER ResetOfRejectedStatePeriodInDays
+Specifies the period of time in days after which a 'rejected' status is reset to 'suspected'. (default: 6 months)
+
 .PARAMETER DocumentationUrl
 An optional URL pointing to documentation about the context-specific use of this script. Can be set in defaults config file.
 
@@ -200,6 +206,12 @@ param (
     # delete). Can be set in defaults config file.
     [int]$DeleteSuspectedResourcesAndGroupsAfterDays = -1,
 
+    # Specifies that a 'rejected' status shall be reset to 'suspected' after the specified period of time to avoid that unused resources are remaining undetected forever.
+    [switch]$EnableRegularResetOfRejectedState = $false,
+
+    # Specifies the duration in days after which a 'rejected' status is reset to 'suspected'. (default: 6 months)
+    [int]$ResetOfRejectedStatePeriodInDays = -1,
+
     # An optional URL pointing to documentation about the context-specific
     # use of this script. Can be set in defaults config file.
     [string]$DocumentationUrl = $null,
@@ -256,6 +268,17 @@ if ($defaultsConfig.PSobject.Properties.name -match "DontDeleteEmptyResourceGrou
 }
 if ($defaultsConfig.PSobject.Properties.name -match "AlwaysOnlyMarkForDeletion") {
     try { $AlwaysOnlyMarkForDeletion = [System.Convert]::ToBoolean($defaultsConfig.AlwaysOnlyMarkForDeletion) } catch {}
+}
+if ($defaultsConfig.PSobject.Properties.name -match "EnableRegularResetOfRejectedState") {
+    try { $EnableRegularResetOfRejectedState = [System.Convert]::ToBoolean($defaultsConfig.EnableRegularResetOfRejectedState) } catch {}
+}
+if ($EnableRegularResetOfRejectedState -and $ResetOfRejectedStatePeriodInDays -lt 1) {
+    if ($defaultsConfig.ResetOfRejectedStatePeriodInDays -ge 1) {
+        $ResetOfRejectedStatePeriodInDays = $defaultsConfig.ResetOfRejectedStatePeriodInDays
+    }
+    else {
+        $ResetOfRejectedStatePeriodInDays = 180
+    }
 }
 if ($defaultsConfig.PSobject.Properties.name -match "TryMakingUserContributorTemporarily") {
     try { $TryMakingUserContributorTemporarily = [System.Convert]::ToBoolean($defaultsConfig.TryMakingUserContributorTemporarily) } catch {}
@@ -711,21 +734,24 @@ function Add-SubjectForDeletionTags
         [SubjectForDeletionStatus]$Status = [SubjectForDeletionStatus]::suspected,
         [string]$Reason = $null, 
         [string]$Hint = $null, 
-        [switch]$SuppressHostOutput = $false
+        [switch]$SuppressHostOutput = $false,
+        [switch]$AllowResetOfRejectedToSuspected = $false
     )
     $tags = $ResourceOrGroup.Tags
     $subjectForDeletionTagValue = ($tags.$subjectForDeletionTagName ?? '').Trim()
-    $subjectForDeletionFindingDateTagValue = $tags.$subjectForDeletionFindingDateTagName
+    $subjectForDeletionFindingDateTagValue = ($tags.$subjectForDeletionFindingDateTagName ?? '').Trim()
     # only update tag if not existing yet or still in suspected status
     $targetTagValue = $Status.ToString()
     if ([string]::IsNullOrWhiteSpace($subjectForDeletionTagValue) -or `
         ($subjectForDeletionTagValue -ine [SubjectForDeletionStatus]::confirmed.ToString() -and `
-         $subjectForDeletionTagValue -ine [SubjectForDeletionStatus]::suspectedSubResources.ToString()) )
+         $subjectForDeletionTagValue -ine [SubjectForDeletionStatus]::suspectedSubResources.ToString()) -or `
+        ($subjectForDeletionTagValue -ieq [SubjectForDeletionStatus]::rejected.ToString() -and `
+         $AllowResetOfRejectedToSuspected) )
     {
         $dateString = Get-Date -AsUTC -Format "dd.MM.yyyy"
         $tagsToBeRemoved = @{}
         $newTags = @{ $subjectForDeletionTagName = $targetTagValue }
-        # Don't overwrite FindingDate tag value is existing
+        # Don't overwrite FindingDate tag if value is existing
         if ([string]::IsNullOrWhiteSpace($subjectForDeletionFindingDateTagValue)) {
             $newTags.Add($subjectForDeletionFindingDateTagName, $dateString)
         }
@@ -771,6 +797,7 @@ function Remove-SubjectForDeletionTags
         $ResourceOrGroup    
     )
     $tags = $ResourceOrGroup.Tags
+    if (!$tags) { return }
     $resourceOrGroupId = $ResourceOrGroup.ResourceId
     $subjectForDeletionTagValue = ($tags.$subjectForDeletionTagName ?? '').Trim()
     $status = $null
@@ -1026,6 +1053,25 @@ foreach ($sub in $allSubscriptions) {
 
             # Check for unused resource group was requested
             if ($CheckForUnusedResourceGroups) {
+                # reset 'rejected' status to 'suspected' after specified time if specified, otherwise skip 'rejected' resource group
+                $subjectForDeletionTagValue = ''
+                $subjectForDeletionTagValue = ($rg.Tags.$subjectForDeletionTagName ?? '').Trim()
+                $findingDateString = ''
+                $findingDateString = ($rg.Tags.$subjectForDeletionFindingDateTagName ?? '').Trim()
+                if ($subjectForDeletionTagValue -ieq [SubjectForDeletionStatus]::rejected.ToString()) {
+                    if ($EnableRegularResetOfRejectedState -and $findingDateString) {
+                        $findingDateTime = (Get-Date -AsUTC)
+                        if ([datetime]::TryParse($findingDateString, [ref]$findingDateTime)) {
+                            if ((Get-Date -AsUTC).Subtract($findingDateTime) -gt $ResetOfRejectedStatePeriodInDays) {
+                                Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Resetting status from 'rejected' to 'suspected' after $ResetOfRejectedStatePeriodInDays days for resource group: $resourceGroupName..."
+                                Add-SubjectForDeletionTags -ResourceOrGroup $rg -Status suspected `
+                                    -AllowResetOfRejectedToSuspected -SuppressHostOutput -WhatIf:$WhatIfPreference
+                            }
+                        }
+                    }
+                    continue
+                }
+                # check for deployments in the specified number of last days and mark resource group for deletion if no deployments found
                 $deployments = $rg | Get-AzResourceGroupDeployment | Sort-Object -Property Timestamp -Descending
                 if ($deployments) {
                     # determine whether newest deployment is too old
@@ -1059,6 +1105,25 @@ foreach ($sub in $allSubscriptions) {
             }
         }
 
+        # reset 'rejected' status to 'suspected' after specified time if specified, otherwise skip 'rejected' resource
+        $subjectForDeletionTagValue = ''
+        $subjectForDeletionTagValue = ($resource.Tags.$subjectForDeletionTagName ?? '').Trim()
+        $findingDateString = ''
+        $findingDateString = ($resource.Tags.$subjectForDeletionFindingDateTagName ?? '').Trim()
+        if ($subjectForDeletionTagValue -ieq [SubjectForDeletionStatus]::rejected.ToString()) {
+            if ($EnableRegularResetOfRejectedState -and $findingDateString) {
+                $findingDateTime = (Get-Date -AsUTC)
+                if ([datetime]::TryParse($findingDateString, [ref]$findingDateTime)) {
+                    if ((Get-Date -AsUTC).Subtract($findingDateTime) -gt $ResetOfRejectedStatePeriodInDays) {
+                        Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Resetting status from 'rejected' to 'suspected' after $ResetOfRejectedStatePeriodInDays days for resource: $($resource.Name)..."
+                        Add-SubjectForDeletionTags -ResourceOrGroup $resource -Status suspected `
+                            -AllowResetOfRejectedToSuspected -SuppressHostOutput -WhatIf:$WhatIfPreference
+                    }
+                }
+            }
+            continue
+        }
+        
         # call resource type specific hook for testing unused characteristics of this resource
         $normalizedResourceTypeName = $resourceTypeName.Replace("/", "-").Replace(".", "-").ToLower()
         $normalizedResourceKindName = $normalizedResourceTypeName
@@ -1084,7 +1149,7 @@ foreach ($sub in $allSubscriptions) {
                 $status = ($resource.Tags.$subjectForDeletionTagName ?? '').Trim()
                 $isResourceSuspected = $status -ieq [SubjectForDeletionStatus]::suspected.ToString()
                 $isResourceDeletionRejected = $status -ieq [SubjectForDeletionStatus]::rejected.ToString()
-                $lastEvalDateString = $resource.Tags.$subjectForDeletionFindingDateTagName
+                $lastEvalDateString = ($resource.Tags.$subjectForDeletionFindingDateTagName ?? '').Trim()
                 if ($isResourceSuspected -and $lastEvalDateString) {
                     $lastEvalDateTime = (Get-Date -AsUTC)
                     if ([datetime]::TryParse($lastEvalDateString, [ref]$lastEvalDateTime)) {
@@ -1106,7 +1171,7 @@ foreach ($sub in $allSubscriptions) {
                 }
                 elseif ($isResourceDeletionRejected) {
                     # Remove reason and finding date tags
-                    Remove-SubjectForDeletionTags -ResourceOrGroup $resource -TargetStatus [SubjectForDeletionStatus]::rejected -WhatIf:$WhatIfPreference | Out-Null
+                    Remove-SubjectForDeletionTags -ResourceOrGroup $resource -WhatIf:$WhatIfPreference | Out-Null
                 }
             }
 
@@ -1160,7 +1225,7 @@ foreach ($sub in $allSubscriptions) {
             }
             "markForSuspectSubResourceCheck" {
                 Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Marking resource for check of suspect sub resources..."
-                Add-SubjectForDeletionTags -ResourceOrGroup $resource -Status [SubjectForDeletionStatus]::suspectedSubResources -Reason $reason -WhatIf:$WhatIfPreference
+                Add-SubjectForDeletionTags -ResourceOrGroup $resource -Status suspectedSubResources -Reason $reason -WhatIf:$WhatIfPreference
             }
             "delete" {
                 Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Deleting resource..."
@@ -1193,7 +1258,8 @@ foreach ($sub in $allSubscriptions) {
         if ($DeleteSuspectedResourcesAndGroupsAfterDays -ge 0) {
             $status = ($resourceGroup.Tags.$subjectForDeletionTagName ?? '').Trim()
             $isResourceGroupSuspected = $status -ieq [SubjectForDeletionStatus]::suspected.ToString()
-            $lastEvalDateString = $resourceGroup.Tags.$subjectForDeletionFindingDateTagName
+            $isResourceGroupDeletionRejected = $status -ieq [SubjectForDeletionStatus]::rejected.ToString()
+            $lastEvalDateString = ($resourceGroup.Tags.$subjectForDeletionFindingDateTagName ?? '').Trim()
             if ($isResourceGroupSuspected -and $lastEvalDateString) {
                 $lastEvalDateTime = (Get-Date -AsUTC)
                 if ([datetime]::TryParse($lastEvalDateString, [ref]$lastEvalDateTime)) {
@@ -1211,6 +1277,10 @@ foreach ($sub in $allSubscriptions) {
                         }
                     }
                 }
+            }
+            elseif ($isResourceGroupDeletionRejected) {
+                # Remove reason and finding date tags
+                Remove-SubjectForDeletionTags -ResourceOrGroup $resourceGroup -WhatIf:$WhatIfPreference | Out-Null
             }
         }
 

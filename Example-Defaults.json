@@ -5,6 +5,8 @@
   "MinimumResourceAgeInDaysForChecking": 4,
   "DeleteSuspectedResourcesAndGroupsAfterDays": 30,
   "AlwaysOnlyMarkForDeletion": true,
+  "EnableRegularResetOfRejectedState": true,
+  "ResetOfRejectedStatePeriodInDays": 180,
   "TryMakingUserContributorTemporarily": true,
   "EnforceStdout": false,
   "AutomationAccountResourceId": "/subscriptions/b53f424g-fe44-4d71-bgfe-8b0360b3c525/resourceGroups/myResourceGroup/providers/Microsoft.Automation/automationAccounts/myAutomationAccount",
