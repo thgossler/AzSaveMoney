@@ -628,7 +628,7 @@ function Test-ResourceActionHook-microsoft-operationalinsights-workspaces($Resou
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-servicebus-namespaces($Resource) {
-    $queues = Get-AzServiceBusQueue -ResourceGroupName $Resource.resourceGroup -Namespace $Resource.name
+    $queues = Get-AzServiceBusQueue -ResourceGroupName $Resource.resourceGroup -NamespaceName $Resource.name
     $result = [ResourceAction]::none
     foreach ($queue in $queues) {
         if ($queue.Status -ine "Active") {

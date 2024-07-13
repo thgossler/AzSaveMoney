@@ -28,6 +28,8 @@
     <a href="https://github.com/thgossler/AzSaveMoney#contributing">Contribute</a>
     ·
     <a href="https://github.com/sponsors/thgossler">Sponsor project</a>
+    ·
+    <a href="https://www.paypal.com/donate/?hosted_button_id=JVG7PFJ8DMW7J">Sponsor via PayPal</a>
   </p>
 </div>
 
@@ -109,7 +111,7 @@ The following example process is suggested for large organizations:
 1. **RUN** the script regularly
 2. **ALERT** `suspected` or `suspectedSubResources` resources to resource owners
 3. **MANUAL RESOLUTION** by owners by reviewing and changing the `SubjectForDeletion` tag value to one of the following predefined terms (case-sensitive!):
-   - `rejected`: Resource is needed and shall NOT be deleted (this status will not be overwritten in subsequent runs for 6 months after `SubjectForDeletion-FindingDate`)
+   - `rejected`: Resource is needed and shall NOT be deleted (this status will not be overwritten in subsequent runs, except if configured to be reset e.g. every 6 months after `SubjectForDeletion-FindingDate`)
    - `confirmed`: Resource shall be deleted (will be automatically deleted in the next run)
 4. **AUTO-DELETION/REEVALUATION**: Subsequent script runs will check all resources again with the following special handling for status:
    - `confirmed`: resource will be deleted
@@ -130,6 +132,15 @@ Don't forget to give the project a star :wink: Thanks!
 3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
+
+
+## Donate
+
+If you wish to use the tool but are unable to contribute, please consider donating an amount that reflects its value to you. You can do so either via PayPal
+
+[![Donate via PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=JVG7PFJ8DMW7J)
+
+or via [GitHub Sponsors](https://github.com/sponsors/thgossler).
 
 
 ## License
