@@ -241,7 +241,7 @@ function Write-HostOrOutput {
         [switch]$NoNewline = $false
     )
     if ($EnforceStdout.IsPresent) {
-        Write-Output $Message -NoNewline:$NoNewline
+        Write-Output $Message
     }
     else {
         Write-Host $Message -ForegroundColor $ForegroundColor -BackgroundColor $BackgroundColor -NoNewline:$NoNewline
