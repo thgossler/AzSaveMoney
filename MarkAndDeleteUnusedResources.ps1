@@ -661,6 +661,38 @@ function Test-ResourceActionHook-microsoft-web-sites-functionapp($Resource) {
     }
     return [ResourceAction]::none, ""
 }
+function Test-ResourceActionHook-microsoft-web-sites-functionapp-linux($Resource) {
+    return Test-ResourceActionHook-microsoft-web-sites-functionapp($Resource)
+}
+function Test-ResourceActionHook-microsoft-web-sites-functionapp-linux-container($Resource) {
+    return Test-ResourceActionHook-microsoft-web-sites-functionapp($Resource)
+}
+function Test-ResourceActionHook-microsoft-web-sites-app($Resource) {
+    $periodInDays = 35
+    $webApp = Get-AzWebApp -ResourceGroupName $Resource.resourceGroup -Name $Resource.name
+    if ($null -eq $webApp) {
+        return [ResourceAction]::none, "Web App does not exist."
+    }
+    if ($webApp.State -eq 'Stopped') {
+        $lastModifiedTime = $webApp.SiteConfig.LastModifiedTimeUtc
+        $currentTime = (Get-Date).ToUniversalTime()
+        $timeDiff = $currentTime - $lastModifiedTime
+        if ($timeDiff.Days -gt $periodInDays) {
+            return [ResourceAction]::markForDeletion, "Web App has been stopped for more than $periodInDays days."
+        }
+    }
+    $cpuUtilization = Get-Metric -ResourceId $Resource.id -MetricName 'CpuTime' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $cpuUtilization -and $cpuUtilization.Sum -lt 1) {
+        return [ResourceAction]::markForDeletion, "The web app had no CPU utilization for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+function Test-ResourceActionHook-microsoft-web-sites-app-linux($Resource) {
+    return Test-ResourceActionHook-microsoft-web-sites-app($Resource)
+}
+function Test-ResourceActionHook-microsoft-web-sites-app-linux-container($Resource) {
+    return Test-ResourceActionHook-microsoft-web-sites-app($Resource)
+}
 function Test-ResourceActionHook-microsoft-storage-storageaccounts($Resource) {
     $periodInDays = 35
     $totalNumOfTransactions = Get-Metric -ResourceId $Resource.id -MetricName "Transactions" -AggregationType "Total" -PeriodInDays $periodInDays
@@ -672,6 +704,87 @@ function Test-ResourceActionHook-microsoft-storage-storageaccounts($Resource) {
         return [ResourceAction]::markForDeletion, "The storage account had no data for $periodInDays days."
     }
     return [ResourceAction]::none, ""
+}
+function Test-ResourceActionHook-microsoft-apimanagement-service($Resource) {
+    $periodInDays = 35
+    $apimContext = New-AzApiManagementContext -ResourceGroupName $Resource.resourceGroup -ServiceName $Resource.name
+    $apis = Get-AzApiManagementApi -Context $apimContext
+    if ($apis.Count -eq 0) {
+        return [ResourceAction]::markForDeletion, "API Management service has no APIs deployed."
+    }
+    $numberOfTotalRequests = Get-Metric -ResourceId $Resource.id -MetricName "TotalRequests" -AggregationType "Total" -PeriodInDays $periodInDays
+    if ($numberOfTotalRequests.Sum -lt 1) {
+        return [ResourceAction]::markForDeletion, "API Management service has had no traffic in the last $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-compute-virtualmachines($Resource) {
+    $periodInDays = 35
+    $vm = Get-AzVM -ResourceGroupName $Resource.resourceGroup -Name $Resource.name
+    if ($null -eq $vm) {
+        return [ResourceAction]::none, "VM not found."
+    }
+    $vmStatus = Get-AzVM -Status -ResourceGroupName $Resource.resourceGroup -VMName $Resource.name
+    if ($vmStatus.Statuses[1].Code -eq 'PowerState/deallocated' -or $vmStatus.Statuses[1].Code -eq 'PowerState/stopped') {
+        $lastStatusChange = $vmStatus.Statuses[1].Time
+        if ($null -ne $lastStatusChange) {
+            $currentTime = Get-Date
+            $timeDiff = $currentTime - $lastStatusChange
+            if ($timeDiff.Days -gt $periodInDays) {
+                return [ResourceAction]::markForDeletion, "VM has been stopped for more than $periodInDays days."
+            }
+        }
+    }
+    $cpuUtilization = Get-Metric -ResourceId $Resource.id -MetricName 'Percentage CPU' -AggregationType 'Average' -PeriodInDays $periodInDays
+    if ($null -ne $cpuUtilization -and $cpuUtilization.Average -lt 1) {
+        return [ResourceAction]::markForDeletion, "The VM had no CPU utilization for $periodInDays days."
+    }
+    $networkUtilization = Get-Metric -ResourceId $Resource.id -MetricName 'Network In' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $networkUtilization -and $networkUtilization.Sum -lt 1) {
+        return [ResourceAction]::markForDeletion, "The VM had no network traffic for $periodInDays days."
+    }
+    $diskUtilization = Get-Metric -ResourceId $Resource.id -MetricName 'Disk Read Bytes' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $diskUtilization -and $diskUtilization.Sum -lt 1) {
+        return [ResourceAction]::markForDeletion, "The VM had no disk read activity for $periodInDays days."
+    }
+    return [ResourceAction]::none, "" 
+}
+
+function Test-ResourceActionHook-microsoft-compute-virtualmachinescalesets($Resource) {
+    $periodInDays = 30
+    $vmss = Get-AzVmss -ResourceGroupName $Resource.resourceGroup -VMScaleSetName $Resource.name
+    if ($null -eq $vmss) {
+        return [ResourceAction]::none, "VMSS does not exist."
+    }
+    if ($vmss.Sku.Capacity -eq 0) {
+        return [ResourceAction]::markForDeletion, "VMSS has no instances."
+    }
+    $vmssInstances = Get-AzVmssVM -ResourceGroupName $Resource.resourceGroup -VMScaleSetName $Resource.name
+    $allStopped = $true
+    $message = "All instances in VMSS have been stopped."
+    $currentTime = Get-Date
+    foreach ($instance in $vmssInstances) {
+        $instanceView = Get-AzVmssVM -ResourceGroupName $Resource.resourceGroup -VMScaleSetName $Resource.name -InstanceId $instance.InstanceId -InstanceView
+        $powerState = $instanceView.Statuses | Where-Object { $_.Code -match 'PowerState/' } | Select-Object -ExpandProperty Code
+        if ($powerState -ne 'PowerState/deallocated' -and $powerState -ne 'PowerState/stopped') {
+            $allStopped = $false
+            break
+        }
+        $lastStatusChange = $instanceView.Statuses | Where-Object { $_.Code -match 'PowerState/' } | Select-Object -ExpandProperty Time
+        if ($null -ne $lastStatusChange) {
+            $timeDiff = $currentTime - $lastStatusChange
+            if ($timeDiff.Days -le $periodInDays) {
+                $allStopped = $false
+                break
+            }
+            $message = "All instances in VMSS have been stopped for more than $periodInDays days."
+        }
+    }
+    if ($allStopped) {
+        return [ResourceAction]::markForDeletion, $message
+    }
+    return [ResourceAction]::none, "" 
 }
 
 # [ADD NEW HOOKS HERE], ideally insert them above in alphanumeric order
@@ -1017,7 +1130,7 @@ foreach ($sub in $allSubscriptions) {
     }
 
     $resources = [System.Collections.ArrayList]@()
-    $query = "Resources"
+    $query = "resources"
     $skipToken = $null;
     $queryResult = $null;
     do {
@@ -1125,10 +1238,10 @@ foreach ($sub in $allSubscriptions) {
         }
         
         # call resource type specific hook for testing unused characteristics of this resource
-        $normalizedResourceTypeName = $resourceTypeName.Replace("/", "-").Replace(".", "-").ToLower()
+        $normalizedResourceTypeName = $resourceTypeName.Replace(".", "-").Replace("/", "-").Replace(",", "-").ToLower()
         $normalizedResourceKindName = $normalizedResourceTypeName
         if (![String]::IsNullOrWhiteSpace($resourceKindName)) {
-            $normalizedResourceKindName += "-$($resourceKindName.Replace("/", "-").Replace(".", "-").ToLower())"
+            $normalizedResourceKindName += "-$($resourceKindName.Replace(".", "-").Replace("/", "-").Replace(",", "-").ToLower())"
         }
         $action = [ResourceAction]::none
         $reason = $null
