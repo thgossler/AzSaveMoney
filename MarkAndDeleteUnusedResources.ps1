@@ -374,7 +374,7 @@ enum ResourceAction {
 # Resource type-specific hooks for determining the action to perform
 
 function Test-ResourceActionHook-microsoft-batch-batchaccounts($Resource) {
-    $apps = Get-AzBatchApplication -ResourceGroupName $Resource.resourceGroup -AccountName $Resource.name -WarningAction Ignore
+    $apps = Get-AzBatchApplication -ResourceGroupName $Resource.ResourceGroup -AccountName $Resource.Name -WarningAction Ignore
     if ($apps.Id.Length -lt 1) {
         return [ResourceAction]::markForDeletion, "The batch account has no apps."
     }
@@ -382,14 +382,14 @@ function Test-ResourceActionHook-microsoft-batch-batchaccounts($Resource) {
 }
 function Test-ResourceActionHook-microsoft-cache-redis($Resource) {
     $periodInDays = 35
-    $totalGetCount = Get-Metric -ResourceId $Resource.id -MetricName 'allgetcommands' -AggregationType Total -PeriodInDays $periodInDays
+    $totalGetCount = Get-Metric -ResourceId $Resource.Id -MetricName 'allgetcommands' -AggregationType Total -PeriodInDays $periodInDays
     if ($null -ne $totalGetCount -and $totalGetCount.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The Redis cache had no read access for $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-compute-disks($Resource) {
-    if ($Resource.properties.diskState -ieq "Unattached" -or $Resource.managedBy.Length -lt 1)
+    if ($Resource.Properties.diskState -ieq "Unattached" -or $Resource.ManagedBy.Length -lt 1)
     {
         return [ResourceAction]::markForDeletion, "The disk is not attached to any virtual machine."
     }
@@ -397,7 +397,7 @@ function Test-ResourceActionHook-microsoft-compute-disks($Resource) {
 }
 function Test-ResourceActionHook-microsoft-compute-images($Resource) {
     try {
-        $sourceVm = Get-AzResource -ResourceId $Resource.properties.sourceVirtualMachine.Id -ErrorAction Ignore -WarningAction Ignore
+        $sourceVm = Get-AzResource -ResourceId $Resource.Properties.sourceVirtualMachine.Id -ErrorAction Ignore -WarningAction Ignore
         if ($sourceVm) {
             Write-HostOrOutput "$($tab)$($tab)Source VM of a usually generalized image is still existing" -ForegroundColor DarkGray
             return [ResourceAction]::markForDeletion, "The source VM (usually generalized) of the image still exists."
@@ -408,14 +408,14 @@ function Test-ResourceActionHook-microsoft-compute-images($Resource) {
 }
 function Test-ResourceActionHook-microsoft-compute-snapshots($Resource) {
     $periodInDays = 180
-    if ($Resource.properties.timeCreated -lt (Get-Date -AsUTC).AddDays(-$periodInDays)) {
+    if ($Resource.Properties.timeCreated -lt (Get-Date -AsUTC).AddDays(-$periodInDays)) {
         return [ResourceAction]::markForDeletion, "The snapshot is older than $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-containerregistry-registries($Resource) {
     $periodInDays = 90
-    $totalPullCount = Get-Metric -ResourceId $Resource.id -MetricName 'TotalPullCount' -AggregationType Average -PeriodInDays $periodInDays
+    $totalPullCount = Get-Metric -ResourceId $Resource.Id -MetricName 'TotalPullCount' -AggregationType Average -PeriodInDays $periodInDays
     if ($null -ne $totalPullCount -and $totalPullCount.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The container registry had no pull requests for $periodInDays days."
     }
@@ -423,14 +423,14 @@ function Test-ResourceActionHook-microsoft-containerregistry-registries($Resourc
 }
 function Test-ResourceActionHook-microsoft-datafactory-factories($Resource) {
     $periodInDays = 35
-    $totalSucceededActivityRuns = Get-Metric -ResourceId $Resource.id -MetricName 'ActivitySucceededRuns' -AggregationType Total -PeriodInDays $periodInDays
+    $totalSucceededActivityRuns = Get-Metric -ResourceId $Resource.Id -MetricName 'ActivitySucceededRuns' -AggregationType Total -PeriodInDays $periodInDays
     if ($null -ne $totalSucceededActivityRuns -and $totalSucceededActivityRuns.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The data factory has no successful activity runs for $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-dataprotection-backupvaults($Resource) {
-    $backupInstances = Get-AzDataProtectionBackupInstance -ResourceGroupName $Resource.resourceGroup -VaultName $Resource.name
+    $backupInstances = Get-AzDataProtectionBackupInstance -ResourceGroupName $Resource.ResourceGroup -VaultName $Resource.Name
     if ($backupInstances.Count -lt 1) {
         return [ResourceAction]::markForDeletion, "The backup vault has no backup instances."
     }
@@ -438,7 +438,7 @@ function Test-ResourceActionHook-microsoft-dataprotection-backupvaults($Resource
 }
 function Test-ResourceActionHook-microsoft-dbformysql-servers($Resource) {
     $periodInDays = 35
-    $totalNetworkBytesEgress = Get-Metric -ResourceId $Resource.id -MetricName 'network_bytes_egress' -AggregationType Total -PeriodInDays $periodInDays
+    $totalNetworkBytesEgress = Get-Metric -ResourceId $Resource.Id -MetricName 'network_bytes_egress' -AggregationType Total -PeriodInDays $periodInDays
     if ($null -ne $totalNetworkBytesEgress -and $totalNetworkBytesEgress.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The MySql database had no egress for $periodInDays days."
     }
@@ -446,7 +446,7 @@ function Test-ResourceActionHook-microsoft-dbformysql-servers($Resource) {
 }
 function Test-ResourceActionHook-microsoft-documentdb-databaseaccounts($Resource) {
     $periodInDays = 35
-    $totalRequestCount = Get-Metric -ResourceId $Resource.id -MetricName 'TotalRequests' -AggregationType Count -PeriodInDays $periodInDays
+    $totalRequestCount = Get-Metric -ResourceId $Resource.Id -MetricName 'TotalRequests' -AggregationType Count -PeriodInDays $periodInDays
     if ($null -ne $totalRequestCount -and $totalRequestCount.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The Document DB had no requests account for $periodInDays days."
     }
@@ -454,14 +454,14 @@ function Test-ResourceActionHook-microsoft-documentdb-databaseaccounts($Resource
 }
 function Test-ResourceActionHook-microsoft-eventgrid-topics($Resource) {
     $periodInDays = 35
-    $totalSuccessfulDeliveredEvents = Get-Metric -ResourceId $Resource.id -MetricName 'DeliverySuccessCount' -AggregationType Total -PeriodInDays $periodInDays
+    $totalSuccessfulDeliveredEvents = Get-Metric -ResourceId $Resource.Id -MetricName 'DeliverySuccessCount' -AggregationType Total -PeriodInDays $periodInDays
     if ($null -ne $totalSuccessfulDeliveredEvents -and $totalSuccessfulDeliveredEvents.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The event grid topic had no successfully delivered events for $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-insights-activitylogalerts($Resource) {
-    if ($Resource.properties.enabled -eq $false) {
+    if ($Resource.Properties.enabled -eq $false) {
         return [ResourceAction]::markForDeletion, "The activity log alert is disabled."
     }
     return [ResourceAction]::none, ""
@@ -470,7 +470,7 @@ function Test-ResourceActionHook-microsoft-insights-components($Resource) {
     $access = Get-AzAccessToken -ResourceTypeName "OperationalInsights"
     $headers = @{"Authorization" = "Bearer " + $access.Token}
     $body = @{ "timespan" = "P30D"; "query" = "requests | summarize totalCount=sum(itemCount)"} | ConvertTo-Json
-    $result = Invoke-RestMethod "https://api.applicationinsights.io/v1/apps/$($Resource.properties.AppId)/query" -Method 'POST' -Headers $headers -Body $body -ContentType "application/json"
+    $result = Invoke-RestMethod "https://api.applicationinsights.io/v1/apps/$($Resource.Properties.AppId)/query" -Method 'POST' -Headers $headers -Body $body -ContentType "application/json"
     $totalRequestCount = $result.tables[0].rows[0][0]
     if ($totalRequestCount -lt 1) {
         return [ResourceAction]::markForDeletion, "The application insights resource had no read requests for 30 days."
@@ -478,20 +478,20 @@ function Test-ResourceActionHook-microsoft-insights-components($Resource) {
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-insights-metricalerts($Resource) {
-    if ($Resource.properties.enabled -eq $false) {
+    if ($Resource.Properties.enabled -eq $false) {
         return [ResourceAction]::markForDeletion, "The metric alert is disabled."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-insights-scheduledqueryrules($Resource) {
-    if ($Resource.properties.enabled -eq $false) {
+    if ($Resource.Properties.enabled -eq $false) {
         return [ResourceAction]::markForDeletion, "The scheduled query rule is disabled."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-keyvault-vaults($Resource) {
     $periodInDays = 35
-    $totalApiHits = Get-Metric -ResourceId $Resource.id -MetricName 'ServiceApiHit' -AggregationType Count -PeriodInDays $periodInDays
+    $totalApiHits = Get-Metric -ResourceId $Resource.Id -MetricName 'ServiceApiHit' -AggregationType Count -PeriodInDays $periodInDays
     if ($null -ne $totalApiHits -and $totalApiHits.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The key vault had no API hits for $periodInDays days."
     }
@@ -499,7 +499,7 @@ function Test-ResourceActionHook-microsoft-keyvault-vaults($Resource) {
 }
 function Test-ResourceActionHook-microsoft-kusto-clusters($Resource) {
     $periodInDays = 35
-    $totalReceivedBytesAverage = Get-Metric -ResourceId $Resource.id -MetricName 'ReceivedDataSizeBytes' -AggregationType Average -PeriodInDays $periodInDays
+    $totalReceivedBytesAverage = Get-Metric -ResourceId $Resource.Id -MetricName 'ReceivedDataSizeBytes' -AggregationType Average -PeriodInDays $periodInDays
     if ($null -ne $totalReceivedBytesAverage -and $totalReceivedBytesAverage.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The Kusto cluster had no egress for $periodInDays days."
     }
@@ -507,10 +507,10 @@ function Test-ResourceActionHook-microsoft-kusto-clusters($Resource) {
 }
 function Test-ResourceActionHook-microsoft-logic-workflows($Resource) {
     $periodInDays = 35
-    if ($Resource.properties.state -ine 'Enabled') {
+    if ($Resource.Properties.state -ine 'Enabled') {
         return [ResourceAction]::markForDeletion, "The logic apps workflow disabled."
     }
-    $totalRunsSucceeded = Get-Metric -ResourceId $Resource.id -MetricName 'RunsSucceeded' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $totalRunsSucceeded = Get-Metric -ResourceId $Resource.Id -MetricName 'RunsSucceeded' -AggregationType 'Total' -PeriodInDays $periodInDays
     if ($null -ne $totalRunsSucceeded -and $totalRunsSucceeded.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The logic apps workflow had no successful runs for $periodInDays days."
     }
@@ -518,25 +518,25 @@ function Test-ResourceActionHook-microsoft-logic-workflows($Resource) {
 }
 function Test-ResourceActionHook-microsoft-network-bastionhosts($Resource) {
     $periodInDays = 35
-    $totalNumberOfSessions = Get-Metric -ResourceId $Resource.id -MetricName 'sessions' -AggregationType Total -PeriodInDays $periodInDays
+    $totalNumberOfSessions = Get-Metric -ResourceId $Resource.Id -MetricName 'sessions' -AggregationType Total -PeriodInDays $periodInDays
     if ($null -ne $totalNumberOfSessions -and $totalNumberOfSessions.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The Bastion host had no sessions for $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-network-connections($Resource) {
-    if ($Resource.properties.connectionStatus -ine 'Connected') {
+    if ($Resource.Properties.connectionStatus -ine 'Connected') {
         return [ResourceAction]::markForDeletion, "The network connection is disconnected."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-network-loadbalancers($Resource) {
     $periodInDays = 35
-    if ($Resource.properties.loadBalancingRules.Count -lt 1) {
+    if ($Resource.Properties.loadBalancingRules.Count -lt 1) {
         return [ResourceAction]::markForDeletion, "The load balancer has no load blanancing rules."
     }
-    if ($Resource.sku.name -ine 'Basic') {  # metrics not available in Basic SKU
-        $totalByteCount = Get-Metric -ResourceId $Resource.id -MetricName 'ByteCount' -AggregationType Total -PeriodInDays $periodInDays
+    if ($Resource.Sku.name -ine 'Basic') {  # metrics not available in Basic SKU
+        $totalByteCount = Get-Metric -ResourceId $Resource.Id -MetricName 'ByteCount' -AggregationType Total -PeriodInDays $periodInDays
         if ($null -ne $totalByteCount -and $totalByteCount.Sum -lt 1) {
             return [ResourceAction]::markForDeletion, "The load balancer had no transmitted bytes for $periodInDays days."
         }
@@ -544,19 +544,19 @@ function Test-ResourceActionHook-microsoft-network-loadbalancers($Resource) {
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-network-networkinterfaces($Resource) {
-    if (!$Resource.properties.virtualMachine -and !$Resource.properties.privateEndpoint) {
+    if (!$Resource.Properties.virtualMachine -and !$Resource.Properties.privateEndpoint) {
         return [ResourceAction]::markForDeletion, "The network interface is unassigned."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-network-networksecuritygroups($Resource) {
-    if (!$Resource.properties.networkInterfaces -and !$Resource.properties.subnets) {
+    if (!$Resource.Properties.networkInterfaces -and !$Resource.Properties.subnets) {
         return [ResourceAction]::markForDeletion, "The network security group is unassigned."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-network-publicipaddresses($Resource) {
-    if ($null -eq $Resource.properties.ipConfiguration.id)
+    if ($null -eq $Resource.Properties.ipConfiguration.id)
     {
         return [ResourceAction]::markForDeletion, "The public IP address is unassigned."
     }
@@ -575,13 +575,13 @@ function Test-ResourceActionHook-microsoft-network-routetables($Resource) {
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-network-trafficmanagerprofiles($Resource) {
-    if ($Resource.properties.profileStatus -ine 'Enabled') {
+    if ($Resource.Properties.profileStatus -ine 'Enabled') {
         return [ResourceAction]::markForDeletion, "The traffic manager profile is disabled."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-network-virtualnetworks($Resource) {
-    if ($Resource.properties.subnets.Count -lt 1) {
+    if ($Resource.Properties.subnets.Count -lt 1) {
         return [ResourceAction]::markForDeletion, "The virtual network has no subnets."
     }
     return [ResourceAction]::none, ""
@@ -589,8 +589,8 @@ function Test-ResourceActionHook-microsoft-network-virtualnetworks($Resource) {
 function Test-ResourceActionHook-microsoft-notificationhubs-namespaces($Resource) {
     $parameters = @{
         ResourceType      = 'Microsoft.NotificationHubs/namespaces/notificationHubs'
-        ResourceGroupName = $Resource.resourceGroup
-        ResourceName      = $Resource.name
+        ResourceGroupName = $Resource.ResourceGroup
+        ResourceName      = $Resource.Name
         ApiVersion        = '2017-04-01'
         ErrorAction       = 'SilentlyContinue'
     }
@@ -610,14 +610,14 @@ function Test-ResourceActionHook-microsoft-operationalinsights-workspaces($Resou
     #
     $periodInDays = 35  # data retention in the LogAnalytics workspaces needs to be configured correspondingly
     if ($enableOperationalInsightsWorkspaceHook -eq $true) {
-        $query = "LAQueryLogs | where TimeGenerated >= now() - $($periodInDays)d | where RequestTarget == '$($Resource.id)' | count"
+        $query = "LAQueryLogs | where TimeGenerated >= now() - $($periodInDays)d | where RequestTarget == '$($Resource.Id)' | count"
         $numberOfUserOrClientRequests = 0
         if (![string]::IsNullOrWhiteSpace($CentralAuditLogAnalyticsWorkspaceId)) {
             $results = Invoke-AzOperationalInsightsQuery -Query $query -WorkspaceId $CentralAuditLogAnalyticsWorkspaceId | Select-Object -ExpandProperty Results
             $numberOfUserOrClientRequests = [int]$results[0].Count
         }
         if ($numberOfUserOrClientRequests -lt 1) {
-            $workspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $Resource.resourceGroup -Name $Resource.name
+            $workspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $Resource.ResourceGroup -Name $Resource.Name
             $results = Invoke-AzOperationalInsightsQuery -Query $query -WorkspaceId $workspace.CustomerId | Select-Object -ExpandProperty Results
             $numberOfUserOrClientRequests = [int]$results[0].Count
         }
@@ -628,7 +628,7 @@ function Test-ResourceActionHook-microsoft-operationalinsights-workspaces($Resou
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-servicebus-namespaces($Resource) {
-    $queues = Get-AzServiceBusQueue -ResourceGroupName $Resource.resourceGroup -NamespaceName $Resource.name
+    $queues = Get-AzServiceBusQueue -ResourceGroupName $Resource.ResourceGroup -NamespaceName $Resource.Name
     $result = [ResourceAction]::none
     foreach ($queue in $queues) {
         if ($queue.Status -ine "Active") {
@@ -639,17 +639,17 @@ function Test-ResourceActionHook-microsoft-servicebus-namespaces($Resource) {
     return $result, ""
 }
 function Test-ResourceActionHook-microsoft-web-serverfarms($Resource) {
-    if ($Resource.properties.numberOfSites -lt 1) {
+    if ($Resource.Properties.numberOfSites -lt 1) {
         return [ResourceAction]::markForDeletion, "The app service plan has no apps."
     }
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-web-sites-functionapp($Resource) {
-    if ($Resource.properties.state -ieq 'Running') {  # we can't see functions in stopped apps, so we ignore them
+    if ($Resource.Properties.state -ieq 'Running') {  # we can't see functions in stopped apps, so we ignore them
         $GetAzResourceParameters = @{
             ResourceType      = 'Microsoft.Web/sites/functions'
-            ResourceGroupName = $Resource.resourceGroup
-            ResourceName      = $Resource.name
+            ResourceGroupName = $Resource.ResourceGroup
+            ResourceName      = $Resource.Name
             ApiVersion        = '2022-03-01'
             ErrorAction       = 'SilentlyContinue'
         }
@@ -669,7 +669,7 @@ function Test-ResourceActionHook-microsoft-web-sites-functionapp-linux-container
 }
 function Test-ResourceActionHook-microsoft-web-sites-app($Resource) {
     $periodInDays = 35
-    $webApp = Get-AzWebApp -ResourceGroupName $Resource.resourceGroup -Name $Resource.name
+    $webApp = Get-AzWebApp -ResourceGroupName $Resource.ResourceGroup -Name $Resource.Name
     if ($null -eq $webApp) {
         return [ResourceAction]::none, "Web App does not exist."
     }
@@ -681,7 +681,7 @@ function Test-ResourceActionHook-microsoft-web-sites-app($Resource) {
             return [ResourceAction]::markForDeletion, "Web App has been stopped for more than $periodInDays days."
         }
     }
-    $cpuUtilization = Get-Metric -ResourceId $Resource.id -MetricName 'CpuTime' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $cpuUtilization = Get-Metric -ResourceId $Resource.Id -MetricName 'CpuTime' -AggregationType 'Total' -PeriodInDays $periodInDays
     if ($null -ne $cpuUtilization -and $cpuUtilization.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The web app had no CPU utilization for $periodInDays days."
     }
@@ -695,11 +695,11 @@ function Test-ResourceActionHook-microsoft-web-sites-app-linux-container($Resour
 }
 function Test-ResourceActionHook-microsoft-storage-storageaccounts($Resource) {
     $periodInDays = 35
-    $totalNumOfTransactions = Get-Metric -ResourceId $Resource.id -MetricName "Transactions" -AggregationType "Total" -PeriodInDays $periodInDays
+    $totalNumOfTransactions = Get-Metric -ResourceId $Resource.Id -MetricName "Transactions" -AggregationType "Total" -PeriodInDays $periodInDays
     if ($null -ne $totalNumOfTransactions -and $totalNumOfTransactions.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The storage account had no transactions for $periodInDays days."
     }
-    $usedCapacity = Get-Metric -ResourceId $Resource.id -MetricName "UsedCapacity" -AggregationType "Average" -PeriodInDays $periodInDays -TimeGrainInHours 1
+    $usedCapacity = Get-Metric -ResourceId $Resource.Id -MetricName "UsedCapacity" -AggregationType "Average" -PeriodInDays $periodInDays -TimeGrainInHours 1
     if ($null -ne $usedCapacity -and $usedCapacity.Maximum -lt 1) {
         return [ResourceAction]::markForDeletion, "The storage account had no data for $periodInDays days."
     }
@@ -707,12 +707,12 @@ function Test-ResourceActionHook-microsoft-storage-storageaccounts($Resource) {
 }
 function Test-ResourceActionHook-microsoft-apimanagement-service($Resource) {
     $periodInDays = 35
-    $apimContext = New-AzApiManagementContext -ResourceGroupName $Resource.resourceGroup -ServiceName $Resource.name
+    $apimContext = New-AzApiManagementContext -ResourceGroupName $Resource.ResourceGroup -ServiceName $Resource.Name
     $apis = Get-AzApiManagementApi -Context $apimContext
     if ($apis.Count -eq 0) {
         return [ResourceAction]::markForDeletion, "API Management service has no APIs deployed."
     }
-    $numberOfTotalRequests = Get-Metric -ResourceId $Resource.id -MetricName "TotalRequests" -AggregationType "Total" -PeriodInDays $periodInDays
+    $numberOfTotalRequests = Get-Metric -ResourceId $Resource.Id -MetricName "TotalRequests" -AggregationType "Total" -PeriodInDays $periodInDays
     if ($numberOfTotalRequests.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "API Management service has had no traffic in the last $periodInDays days."
     }
@@ -721,11 +721,11 @@ function Test-ResourceActionHook-microsoft-apimanagement-service($Resource) {
 
 function Test-ResourceActionHook-microsoft-compute-virtualmachines($Resource) {
     $periodInDays = 35
-    $vm = Get-AzVM -ResourceGroupName $Resource.resourceGroup -Name $Resource.name
-    if ($null -eq $vm) {
-        return [ResourceAction]::none, "VM not found."
+    $timeCreated = $Resource.Properties.TimeCreated
+    if ($Resource.Properties.ProvisioningState -ine 'Succeeded' -and $timeCreated -lt (Get-Date).AddDays(-$periodInDays)) {
+        return [ResourceAction]::markForDeletion, "The VM is not in a succeeded state for $periodInDays days."
     }
-    $vmStatus = Get-AzVM -Status -ResourceGroupName $Resource.resourceGroup -VMName $Resource.name
+    $vmStatus = Get-AzVM -Status -ResourceGroupName $Resource.ResourceGroup -VMName $Resource.Name
     if ($vmStatus.Statuses[1].Code -eq 'PowerState/deallocated' -or $vmStatus.Statuses[1].Code -eq 'PowerState/stopped') {
         $lastStatusChange = $vmStatus.Statuses[1].Time
         if ($null -ne $lastStatusChange) {
@@ -736,15 +736,15 @@ function Test-ResourceActionHook-microsoft-compute-virtualmachines($Resource) {
             }
         }
     }
-    $cpuUtilization = Get-Metric -ResourceId $Resource.id -MetricName 'Percentage CPU' -AggregationType 'Average' -PeriodInDays $periodInDays
+    $cpuUtilization = Get-Metric -ResourceId $Resource.Id -MetricName 'Percentage CPU' -AggregationType 'Average' -PeriodInDays $periodInDays
     if ($null -ne $cpuUtilization -and $cpuUtilization.Average -lt 1) {
         return [ResourceAction]::markForDeletion, "The VM had no CPU utilization for $periodInDays days."
     }
-    $networkUtilization = Get-Metric -ResourceId $Resource.id -MetricName 'Network In' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $networkUtilization = Get-Metric -ResourceId $Resource.Id -MetricName 'Network In' -AggregationType 'Total' -PeriodInDays $periodInDays
     if ($null -ne $networkUtilization -and $networkUtilization.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The VM had no network traffic for $periodInDays days."
     }
-    $diskUtilization = Get-Metric -ResourceId $Resource.id -MetricName 'Disk Read Bytes' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $diskUtilization = Get-Metric -ResourceId $Resource.Id -MetricName 'Disk Read Bytes' -AggregationType 'Total' -PeriodInDays $periodInDays
     if ($null -ne $diskUtilization -and $diskUtilization.Sum -lt 1) {
         return [ResourceAction]::markForDeletion, "The VM had no disk read activity for $periodInDays days."
     }
@@ -753,19 +753,15 @@ function Test-ResourceActionHook-microsoft-compute-virtualmachines($Resource) {
 
 function Test-ResourceActionHook-microsoft-compute-virtualmachinescalesets($Resource) {
     $periodInDays = 30
-    $vmss = Get-AzVmss -ResourceGroupName $Resource.resourceGroup -VMScaleSetName $Resource.name
-    if ($null -eq $vmss) {
-        return [ResourceAction]::none, "VMSS does not exist."
-    }
-    if ($vmss.Sku.Capacity -eq 0) {
+    if ($Resource.Sku.Capacity -eq 0) {
         return [ResourceAction]::markForDeletion, "VMSS has no instances."
     }
-    $vmssInstances = Get-AzVmssVM -ResourceGroupName $Resource.resourceGroup -VMScaleSetName $Resource.name
+    $vmssInstances = Get-AzVmssVM -ResourceGroupName $Resource.ResourceGroup -VMScaleSetName $Resource.Name
     $allStopped = $true
     $message = "All instances in VMSS have been stopped."
     $currentTime = Get-Date
     foreach ($instance in $vmssInstances) {
-        $instanceView = Get-AzVmssVM -ResourceGroupName $Resource.resourceGroup -VMScaleSetName $Resource.name -InstanceId $instance.InstanceId -InstanceView
+        $instanceView = Get-AzVmssVM -ResourceGroupName $Resource.ResourceGroup -VMScaleSetName $Resource.Name -InstanceId $instance.InstanceId -InstanceView
         $powerState = $instanceView.Statuses | Where-Object { $_.Code -match 'PowerState/' } | Select-Object -ExpandProperty Code
         if ($powerState -ne 'PowerState/deallocated' -and $powerState -ne 'PowerState/stopped') {
             $allStopped = $false
@@ -785,6 +781,62 @@ function Test-ResourceActionHook-microsoft-compute-virtualmachinescalesets($Reso
         return [ResourceAction]::markForDeletion, $message
     }
     return [ResourceAction]::none, "" 
+}
+
+function Test-ResourceActionHook-microsoft-virtualmachineimages-imagetemplates($Resource) {
+    $failedPeriodInDays = 35
+    $updatePeriodInDays = 365
+    if ($Resource.Properties.source.type -eq 'PlatformImage') {
+        if ($Resource.Properties.lastRunStatus.runState -eq "Failed" -and $Resource.Properties.lastRunStatus.endTime -lt (Get-Date).AddDays(-$failedPeriodInDays)) {
+            return [ResourceAction]::markForDeletion, "The image template build failed and was more than $failedPeriodInDays days ago."
+        }
+        if ($Resource.Properties.lastRunStatus.runState -ne "Failed" -and $Resource.Properties.lastRunStatus.endTime -lt (Get-Date).AddDays(-$updatePeriodInDays)) {
+            return [ResourceAction]::markForDeletion, "The image template was not updated for more than $updatePeriodInDays days."
+        }
+        if ($Resource.Properties.distribute.Count -lt 1 -or ($null -eq $Resource.Properties.distribute[0].galleryImageId)) {
+            return [ResourceAction]::markForDeletion, "The image template has no image to distribute."
+        }
+    }
+    return [ResourceAction]::none, "" 
+}
+
+function Test-ResourceActionHook-microsoft-containerinstance-containergroups($Resource) {
+    $periodInDays = 35
+    $currentTime = Get-Date
+    if ($Resource.Properties.InstanceView.State -eq 'Stopped') {
+        $lastInstanceViewEvent = $Resource.Properties.InstanceView.Events | Sort-Object -Property LastTimestamp -Descending | Select-Object -First 1
+        if ($null -ne $lastInstanceViewEvent -and $lastInstanceViewEvent.Name -eq 'DeploymentFailed') {
+            $timeDiff = $currentTime - $lastInstanceViewEvent.LastTimestamp
+            if ($timeDiff.Days -gt $periodInDays) {
+                return [ResourceAction]::markForDeletion, "Container Group deployment failed more than $periodInDays days ago."
+            }
+        }
+        $Resource.Properties.Containers | ForEach-Object {
+            $lastContainerInstanceViewEvent = $_.Properties.InstanceView.Events | Sort-Object -Property LastTimestamp -Descending | Select-Object -First 1
+            if ($null -ne $lastContainerInstanceViewEvent) {
+                if ($lastContainerInstanceViewEvent.Name -eq 'Killing' -or $lastContainerInstanceViewEvent.Name -eq 'Failed') {
+                    $timeDiff = $currentTime - $lastContainerInstanceViewEvent.LastTimestamp
+                    if ($timeDiff.Days -gt $periodInDays) {
+                        return [ResourceAction]::markForDeletion, "All containers failed or killed more than $periodInDays days ago."
+                    }
+                }
+            }
+        }
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-network-applicationgateways($Resource) {
+    $periodInDays = 35
+    $hasBackendPools = $Resource.Properties.BackendAddressPools.Count -gt 0
+    if (-not $hasBackendPools) {
+        return [ResourceAction]::markForDeletion, "Application Gateway has no backend pool instances."
+    }
+    $totalBytesReceived = Get-Metric -ResourceId $Resource.Id -MetricName 'BytesReceived' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $totalBytesReceived -and $totalBytesReceived.Sum -lt 1) {
+        return [ResourceAction]::markForDeletion, "Application Gateway had no received bytes for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
 }
 
 # [ADD NEW HOOKS HERE], ideally insert them above in alphanumeric order
@@ -1130,7 +1182,7 @@ foreach ($sub in $allSubscriptions) {
     }
 
     $resources = [System.Collections.ArrayList]@()
-    $query = "resources"
+        $query = "resources | where type =~ 'Microsoft.Network/applicationGateways'"
     $skipToken = $null;
     $queryResult = $null;
     do {
