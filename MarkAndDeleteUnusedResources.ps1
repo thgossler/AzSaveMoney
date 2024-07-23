@@ -839,6 +839,88 @@ function Test-ResourceActionHook-microsoft-network-applicationgateways($Resource
     return [ResourceAction]::none, ""
 }
 
+function Test-ResourceActionHook-microsoft-sql-servers($Resource) {
+    $periodInDays = 35
+    $activeDatabases = Get-AzSqlDatabase -ServerName $Resource.name -ResourceGroupName $Resource.resourceGroup | Where-Object { $_.Status -eq 'Online' -and $_.DatabaseName -ne 'master' }
+    if ($activeDatabases.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The SQL server has no databases."
+    }
+    $valid = $false
+    $used = $false
+    foreach ($database in $activeDatabases) {
+        $avgDtuUsed = Get-Metric -ResourceId $database.ResourceId -MetricName 'dtu_consumption_percent' -AggregationType 'Average' -PeriodInDays $periodInDays
+        if ($null -ne $avgDtuUsed) {
+            $valid = $true
+            if ($avgDtuUsed.Average -gt 0) {
+                $used = $true
+            }
+        }
+    }
+    if ($valid -and !$used) {
+        return [ResourceAction]::markForDeletion, "The SQL server had no DTU consumption for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-portal-dashboards($Resource) {
+    $lenses = $Resource.Properties.Lenses
+    if ($lenses.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The dashboard has no content."
+    }
+    $overallNumParts = 0
+    $overallNumInputs = 0
+    foreach ($lens in $lenses) {
+        $parts = $lens.parts
+        if ($null -ne $parts) {
+            $overallNumParts += $parts.Count
+            foreach ($part in $parts) {
+                $inputs = $part.metadata.inputs
+                if ($null -ne $inputs) {
+                    $overallNumInputs += $inputs.Count
+                }
+            }
+        }
+    }
+    if ($overallNumParts -lt 1) {
+        return [ResourceAction]::markForDeletion, "The dashboard has no parts."
+    }
+    if ($overallNumInputs -lt 1) {
+        return [ResourceAction]::markForDeletion, "None of the parts on the dashboard has inputs."
+    }
+    $title = $null
+    if ($Resource.Tags) {
+        $title = $Resource.Tags.'hidden-title'
+    }
+    if ($null -eq $title -or $title -match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}') {
+        return [ResourceAction]::markForDeletion, "The dashboard has no readable title, is it a temporary one?"
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-app-containerapps($Resource) {
+    $periodInDays = 35
+    $isProvisioned = $Resource.Properties.ProvisioningState -eq 'Succeeded'
+    $isRunning = $Resource.Properties.RunningStatus -eq 'Running'
+    $hasContainers = $Resource.Properties.Template.Containers.Count -gt 0
+    if (!$isProvisioned) {
+        return [ResourceAction]::markForDeletion, "The container app was not successfully provisioned."
+    }
+    if (!$isRunning) {
+        return [ResourceAction]::markForDeletion, "The container app is not running."
+    }
+    if (!$hasContainers) {
+        return [ResourceAction]::markForDeletion, "The container app has no containers."
+    }
+    $avgCpuUsageInfo = Get-Metric -ResourceId $Resource.Id -MetricName 'UsageNanoCores' -AggregationType 'Average' -PeriodInDays $periodInDays
+    if ($null -ne $avgCpuUsageInfo) {
+        $avgCpuUsage = $avgCpuUsageInfo.Average / 1000000000
+        if ($avgCpuUsage -eq 0) {
+            return [ResourceAction]::markForDeletion, "The container app had no CPU utilization for $periodInDays days."
+        }
+    }
+    return [ResourceAction]::none, ""
+}
+
 # [ADD NEW HOOKS HERE], ideally insert them above in alphanumeric order
 
 
@@ -1182,7 +1264,7 @@ foreach ($sub in $allSubscriptions) {
     }
 
     $resources = [System.Collections.ArrayList]@()
-        $query = "resources | where type =~ 'Microsoft.Network/applicationGateways'"
+    $query = "resources"
     $skipToken = $null;
     $queryResult = $null;
     do {
