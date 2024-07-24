@@ -921,6 +921,127 @@ function Test-ResourceActionHook-microsoft-app-containerapps($Resource) {
     return [ResourceAction]::none, ""
 }
 
+function Test-ResourceActionHook-microsoft-cdn-profiles-cdn($Resource) {
+    $periodInDays = 35
+    $isProvisioned = $Resource.Properties.ProvisioningState -eq 'Succeeded'
+    $isActive = $Resource.Properties.ResourceState -eq 'Active'
+    if (!$isProvisioned) {
+        return [ResourceAction]::markForDeletion, "The classic CDN profile was not successfully provisioned."
+    }
+    if (!$isActive) {
+        return [ResourceAction]::markForDeletion, "The classic CDN profile is not active."
+    }
+    $cdnProfile = Get-AzCdnProfile -ResourceGroupName $Resource.ResourceGroup -ProfileName $Resource.Name
+    $endpoints = Get-AzCdnEndpoint -ResourceGroupName $Resource.ResourceGroup -ProfileName $Resource.Name
+    if ($endpoints.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The classic CDN profile has no endpoints."
+    }
+    $atLeastOneEndpointEnabled = $false
+    foreach ($endpoint in $endpoints) {
+        $origins = $endpoint.Origin
+        foreach ($origin in $origins) {
+            if ($origin.Enabled) {
+                $atLeastOneEndpointEnabled = $true
+                break
+            }
+        }
+    }
+    if (!$atLeastOneEndpointEnabled) {
+        return [ResourceAction]::markForDeletion, "The classic CDN profile has no enabled endpoints."
+    }
+    $requestCountInfo = Get-Metric -ResourceId $cdnProfile.Id -MetricName 'RequestCount' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $requestCountInfo -and $requestCountInfo.Sum -lt 1) {
+        return [ResourceAction]::markForDeletion, "The classic CDN profile had no requests for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-cdn-profiles-frontdoor($Resource) {
+    $periodInDays = 35
+    $isProvisioned = $Resource.Properties.ProvisioningState -eq 'Succeeded'
+    $isActive = $Resource.Properties.ResourceState -eq 'Active'
+    if (!$isProvisioned) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor CDN profile was not successfully provisioned."
+    }
+    if (!$isActive) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor CDN profile is not active."
+    }
+    $cdnProfile = Get-AzFrontDoorCdnProfile -ResourceGroupName $Resource.ResourceGroup -Name $Resource.Name
+    $endpoints = Get-AzFrontDoorCdnEndpoint -ResourceGroupName $Resource.ResourceGroup -ProfileName $cdnProfile.Name
+    $atLeastOneEndpointEnabled = $false
+    $atLeastOneEndpointHasEnabledRoutes = $false
+    foreach ($endpoint in $endpoints) {
+        $isEnabled = $endpoint.EnabledState -eq 'Enabled'
+        if ($isEnabled) {
+            $atLeastOneEndpointEnabled = $true
+        }
+
+        $routes = Get-AzFrontDoorCdnRoute -ResourceGroupName $Resource.ResourceGroup -ProfileName $cdnProfile.Name -EndpointName $endpoint.Name
+        foreach ($route in $routes) {
+            $isRouteEnabled = $route.EnabledState -eq 'Enabled'
+            $isRouteProvisioned = $route.ProvisioningState -eq 'Succeeded'
+            if ($isRouteEnabled -and $isRouteProvisioned) {
+                $atLeastOneEndpointHasEnabledRoutes = $true
+            }
+        }
+    }
+    if (!$atLeastOneEndpointEnabled) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor CDN profile has no enabled endpoints."
+    }
+    if (!$atLeastOneEndpointHasEnabledRoutes) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor CDN profile has no enabled routes."
+    }
+    $requestCountInfo = Get-Metric -ResourceId $cdnProfile.Id -MetricName 'RequestCount' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $requestCountInfo -and $requestCountInfo.Sum -lt 1) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor CDN profile had no requests for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-network-frontdoors($Resource) {
+    $periodInDays = 35
+    $isProvisioned = $Resource.Properties.ProvisioningState -eq 'Succeeded'
+    $isActive = $Resource.Properties.ResourceState -eq 'Enabled'
+    if (!$isProvisioned) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor (classic) was not successfully provisioned."
+    }
+    if (!$isActive) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor (classic) is not active."
+    }
+    $frontendEndpoints = $Resource.Properties.FrontendEndpoints
+    if ($frontendEndpoints.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor (classic) has no frontend endpoints."
+    }
+    $atLeastOneFrontendEndpointEnabled = $false
+    foreach ($frontendEndpoint in $frontendEndpoints) {
+        if ($frontendEndpoint.Properties.ResourceState -eq 'Enabled') {
+            $atLeastOneFrontendEndpointEnabled = $true
+            break
+        }
+    }
+    if (!$atLeastOneFrontendEndpointEnabled) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor (classic) has no enabled frontend endpoints."
+    }
+    $routingRules = $Resource.Properties.RoutingRules
+    if ($routingRules.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor (classic) has no routing rules."
+    }
+    $atLeastOneRoutingRuleEnabled = $false
+    foreach ($routingRule in $routingRules) {
+        if ($routingRule.Properties.ResourceState -eq 'Enabled') {
+            $atLeastOneRoutingRuleEnabled = $true
+        }
+    }
+    if (!$atLeastOneRoutingRuleEnabled) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor (classic) has no enabled routing rules."
+    }
+    $requestCountInfo = Get-Metric -ResourceId $Resource.Id -MetricName 'RequestCount' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $requestCountInfo -and $requestCountInfo.Sum -lt 1) {
+        return [ResourceAction]::markForDeletion, "The Frontdoor (classic) had no requests for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
 # [ADD NEW HOOKS HERE], ideally insert them above in alphanumeric order
 
 
@@ -1288,7 +1409,7 @@ foreach ($sub in $allSubscriptions) {
     foreach ($resource in $resources) {
         Write-HostOrOutput "$($tab)Processing resource '" -NoNewline
         Write-HostOrOutput $($resource.name) -ForegroundColor White -NoNewline
-        Write-HostOrOutput "' (type: $($resource.type), resource group: $($resource.resourceGroup))..."
+        Write-HostOrOutput "' (type: $($resource.type), kind: $($resource.kind), resource group: $($resource.resourceGroup))..."
         $resourceTypeName = $resource.type
         $resourceKindName = $resource.kind
 
