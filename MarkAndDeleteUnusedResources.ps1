@@ -1042,6 +1042,94 @@ function Test-ResourceActionHook-microsoft-network-frontdoors($Resource) {
     return [ResourceAction]::none, ""
 }
 
+function Test-ResourceActionHook-microsoft-automation-automationaccounts($Resource) {
+    $periodInDays = 35
+    $runbooks = Get-AzAutomationRunbook -ResourceGroupName $Resource.resourceGroup -AutomationAccountName $Resource.name
+    $updateConfigs = Get-AzAutomationSoftwareUpdateConfiguration -ResourceGroupName $Resource.resourceGroup -AutomationAccountName $Resource.name
+    $dscNodes = Get-AzAutomationDscNode -ResourceGroupName $Resource.resourceGroup -AutomationAccountName $Resource.name
+    $jobs = Get-AzAutomationJob -ResourceGroupName $Resource.resourceGroup -AutomationAccountName $Resource.name
+    if ($runbooks.Count -lt 1 -and $updateConfigs.Count -lt 1 -and $jobs.Count -lt 1 -and $dscNodes.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The automation account has no runbooks, update configurations, jobs, or DSC nodes."
+    }
+    $hasRecentSuccessfulJobRuns = $false
+    foreach ($job in $jobs) {
+        $jobStatus = $job.Status
+        if ($jobStatus -eq 'Completed') {
+            $jobEndTime = $job.EndTime
+            $timeDiff = (Get-Date) - $jobEndTime.DateTime
+            if ($timeDiff.Days -lt $periodInDays) {
+                $hasRecentSuccessfulJobRuns = $true
+                break
+            }
+        }
+    }
+    $hasResponsiveDscNodes = $false
+    foreach ($dscNode in $dscNodes) {
+        $lastSeen = $dscNode.LastSeen
+        $timeDiff = (Get-Date) - $lastSeen.DateTime
+        if ($timeDiff.Days -lt $periodInDays) {
+            $hasResponsiveDscNodes = $true
+            break
+        }
+    }
+    if (!$hasRecentSuccessfulJobRuns -and !$hasResponsiveDscNodes) {
+        return [ResourceAction]::markForDeletion, "The automation account had no successful job runs or responsive DSC nodes for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-recoveryservices-vaults($Resource) {
+    $periodInDays = 35
+    if (!$Resource.Properties.ProvisioningState -ieq 'Succeeded') {
+        return [ResourceAction]::markForDeletion, "The recovery services vault was not successfully provisioned."
+    }
+    $vmBackupItems = Get-AzRecoveryServicesBackupItem -VaultId $Resource.id -BackupManagementType AzureVM -WorkloadType AzureVM
+    $sqlDbBackupItems = Get-AzRecoveryServicesBackupItem -VaultId $Resource.id -BackupManagementType AzureSQL -WorkloadType AzureSQLDatabase
+    $storageFilesBackupItems = Get-AzRecoveryServicesBackupItem -VaultId $Resource.id -BackupManagementType AzureStorage -WorkloadType AzureFiles
+    if ($vmBackupItems.Count -lt 1 -and $sqlDbBackupItems.Count -lt 1 -and $storageFilesBackupItems.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The recovery services vault has no known backup items."
+    }
+    $hasRecentlyExecutedBackups = $false
+    foreach ($backupItem in $vmBackupItems) {
+        if ($backupItem.LastBackupStatus -ieq 'Completed' -and $backupItem.HealthStatus -ieq 'Passed') {
+            $lastBackupTime = $backupItem.LastBackupTime
+            $timeDiff = (Get-Date) - $lastBackupTime
+            if ($timeDiff.Days -lt $periodInDays) {
+                $hasRecentlyExecutedBackups = $true
+                break
+            }
+        }
+    }
+    foreach ($backupItem in $sqlDbBackupItems) {
+        if ($backupItem.LastBackupStatus -ieq 'Completed' -and $backupItem.HealthStatus -ieq 'Passed') {
+            $lastBackupTime = $backupItem.LastBackupTime
+            $timeDiff = (Get-Date) - $lastBackupTime
+            if ($timeDiff.Days -lt $periodInDays) {
+                $hasRecentlyExecutedBackups = $true
+                break
+            }
+        }
+    }
+    foreach ($backupItem in $storageFilesBackupItems) {
+        if ($backupItem.LastBackupStatus -ieq 'Completed' -and $backupItem.HealthStatus -ieq 'Passed') {
+            $lastBackupTime = $backupItem.LastBackupTime
+            $timeDiff = (Get-Date) - $lastBackupTime
+            if ($timeDiff.Days -lt $periodInDays) {
+                $hasRecentlyExecutedBackups = $true
+                break
+            }
+        }
+    }
+    if (!$hasRecentlyExecutedBackups) {
+        return [ResourceAction]::markForDeletion, "The recovery services vault has no recently completed and healthy backup executions for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-dataprotection-backupvaults($Resource) {
+    return [ResourceAction]::markForDeletion, "This old type of Backup Vault is being phased out in favor of Recovery Services Vault."
+}
+
 # [ADD NEW HOOKS HERE], ideally insert them above in alphanumeric order
 
 
