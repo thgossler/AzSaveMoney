@@ -1251,6 +1251,36 @@ function Test-ResourceActionHook-microsoft-signalrservice-signalr($Resource) {
     return [ResourceAction]::none, ""
 }
 
+function Test-ResourceActionHook-microsoft-cognitiveservices-accounts($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The cognitive services account was not successfully provisioned."
+    }
+    $successfulCalls = Get-Metric -ResourceId $Resource.Id -MetricName 'SuccessfulCalls' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $successfulCalls -and $successfulCalls.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The cognitive services account had no successful calls for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-cognitiveservices-accounts-openai($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The Azure OpenAI cognitive service was not successfully provisioned."
+    }
+    $azureOpenAIRequests = Get-Metric -ResourceId $Resource.Id -MetricName 'AzureOpenAIRequests' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -eq $azureOpenAIRequests -or $azureOpenAIRequests.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The Azure OpenAI cognitive service had no requests for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-machinelearning-workspaces($Resource) {
+    return [ResourceAction]::markForDeletion, "Not supported anymore! Delete or migrate from 'Machine Learning Studio (classic)' to 'Azure Machine Learning'."
+}
+
 # [ADD NEW HOOKS HERE], ideally insert them above in alphanumeric order
 
 
