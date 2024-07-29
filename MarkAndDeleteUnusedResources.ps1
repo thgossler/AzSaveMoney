@@ -1130,6 +1130,127 @@ function Test-ResourceActionHook-microsoft-dataprotection-backupvaults($Resource
     return [ResourceAction]::markForDeletion, "This old type of Backup Vault is being phased out in favor of Recovery Services Vault."
 }
 
+function Test-ResourceActionHook-microsoft-managedidentity-userassignedidentities($Resource, $AllSubscriptionResources) {
+    $hasAssociatedResources = $false
+    foreach ($r in $AllSubscriptionResources) {
+        if ($r.identity -and $r.identity.userAssignedIdentities) {
+            $isAssigned = ($r.identity.userAssignedIdentities.PSObject.Properties | Where-Object { $_.Name -ieq $Resource.Id }).Count -gt 0
+            if ($isAssigned) {
+                $hasAssociatedResources = $true
+                break
+            }
+        }
+    }
+    if (!$hasAssociatedResources) {
+        $roleAssignments = Get-AzRoleAssignment -ObjectId $Resource.Properties.PrincipalId -Scope "/subscriptions/$($Resource.SubscriptionId)"
+        if ($roleAssignments.Count -eq 0) {
+            return [ResourceAction]::markForDeletion, "The user-assigned identity is not associated with any resources and doesn't have role assignments."
+        }
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-kubernetes-connectedclusters($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The connected cluster was not successfully provisioned."
+    }
+    $connectivityStatus = $Resource.Properties.ConnectivityStatus
+    $lastConnectivityTime = $Resource.Properties.LastConnectivityTime
+    if ($null -eq $lastConnectivityTime) {
+        if ($null -eq $connectivityStatus -or $connectivityStatus -ine 'Connecting') {
+            return [ResourceAction]::markForDeletion, "The connected cluster has never connected."
+        }
+    }
+    else {
+        $timeDiff = (Get-Date) - $lastConnectivityTime
+        if ($timeDiff.Days -gt $periodInDays) {
+            return [ResourceAction]::markForDeletion, "The connected cluster has not connected for $periodInDays days."
+        }
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-containerservice-managedclusters($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The connected cluster was not successfully provisioned."
+    }
+    $isRunning = $Resource.Properties.PowerState.code -ieq 'Running'
+    if (!$isRunning) {
+        return [ResourceAction]::markForDeletion, "The managed cluster is not running."
+    }
+    $agentPoolProfiles = $Resource.Properties.AgentPoolProfiles
+    if ($agentPoolProfiles.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The managed cluster has no agent pools."
+    }
+    $atLeastOneAgentPoolActive = $false
+    foreach ($agentPoolProfile in $agentPoolProfiles) {
+        $isAgentPoolProvisioningSucceeded = $agentPoolProfile.ProvisioningState -ieq 'Succeeded'
+        $isAgentPoolRunning = $agentPoolProfile.PowerState.code -ieq 'Running'
+        if ($isAgentPoolProvisioningSucceeded -and $isAgentPoolRunning) {
+            $atLeastOneAgentPoolActive = $true
+            break
+        }
+    }
+    if (!$atLeastOneAgentPoolActive) {
+        return [ResourceAction]::markForDeletion, "The managed cluster has no active agent pools."
+    }
+    $cpuUtilization = Get-Metric -ResourceId $Resource.Id -MetricName 'node_cpu_usage_percentage' -AggregationType 'Average' -PeriodInDays $periodInDays
+    if ($null -ne $cpuUtilization -and $cpuUtilization.Average -lt 0.01) {
+        return [ResourceAction]::markForDeletion, "There was almost no average overall CPU utilization of the managed cluster for $periodInDays days."
+    }
+    $networkInBytes = Get-Metric -ResourceId $Resource.Id -MetricName 'node_network_in_bytes' -AggregationType 'Average' -PeriodInDays $periodInDays
+    if ($null -ne $networkInBytes -and $networkInBytes.Average -eq 0) {
+        return [ResourceAction]::markForDeletion, "There was no network traffic (in average) into the managed cluster for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-search-searchservices($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The search service was not successfully provisioned."
+    }
+    $isRunning = $Resource.Properties.Status -ieq 'Running'
+    if (!$isRunning) {
+        return [ResourceAction]::markForDeletion, "The search service is not running."
+    }
+    $replicaCount = $Resource.Properties.ReplicaCount
+    if ($replicaCount -lt 1) {
+        return [ResourceAction]::markForDeletion, "The search service has no replicas."
+    }
+    $avgSearchQueriesPerSec = Get-Metric -ResourceId $Resource.Id -MetricName 'SearchQueriesPerSecond' -AggregationType 'Average' -PeriodInDays $periodInDays
+    if ($null -ne $avgSearchQueriesPerSec -and $avgSearchQueriesPerSec.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The search service had no search queries for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-signalrservice-signalr($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The search service was not successfully provisioned."
+    }
+    $isRunning = $Resource.Properties.ResourceStopped -ieq 'false'
+    if (!$isRunning) {
+        return [ResourceAction]::markForDeletion, "The SignalR service is not running."
+    }
+    $connectionOpenCount = Get-Metric -ResourceId $Resource.Id -MetricName 'ConnectionOpenCount' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $connectionOpenCount -and $connectionOpenCount.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The SignalR service had no open connections for $periodInDays days."
+    }
+    $outboundTrafficBytes = Get-Metric -ResourceId $Resource.Id -MetricName 'OutboundTraffic' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $outboundTrafficBytes -and $outboundTrafficBytes.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The SignalR service had no outbound traffic for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
 # [ADD NEW HOOKS HERE], ideally insert them above in alphanumeric order
 
 
@@ -1170,7 +1291,13 @@ function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$Aggregati
         }
         $retries -= 1
         if ($null -eq $metric -and $retries -gt 0) {
-            Write-HostOrOutput "$($tab)$($tab)Metric could not be retrieved, retrying in $delaySeconds seconds..." -ForegroundColor DarkGray
+            if ($Error[0].Exception.Message.Contains('BadRequest')) {
+                Write-HostOrOutput "$($tab)$($tab)Metric could not be retrieved (response indicates BadRequest, metric perhaps unsupported at time of creation of the resource)" -ForegroundColor DarkGray
+                $retries = 0
+            }
+            else {
+                Write-HostOrOutput "$($tab)$($tab)Metric could not be retrieved, retrying in $delaySeconds seconds..." -ForegroundColor DarkGray
+            }
         }
     } while ($null -eq $metric -and $retries -gt 0)
     if ($null -eq $metric) {
@@ -1645,7 +1772,7 @@ foreach ($sub in $allSubscriptions) {
 
             if ($hasMinimumAge) {
                 # Execute test hook for current resource type
-                $action, $reason = Invoke-Command -ScriptBlock $hook -ArgumentList $resource
+                $action, $reason = Invoke-Command -ScriptBlock $hook -ArgumentList $resource, $resources
                 if ($action -eq [ResourceAction]::delete -and $AlwaysOnlyMarkForDeletion) {
                     $action = [ResourceAction]::markForDeletion
                 }
