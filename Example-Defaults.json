@@ -1,5 +1,5 @@
 {
-  "DirectoryId": "aebb2cce-a909-43d6-8afb-2d69bbef1ff8",
+  "TenantId": "aebb2cce-a909-43d6-8afb-2d69bbef1ff8",
   "AzEnvironment": "AzureCloud",
   "CentralAuditLogAnalyticsWorkspaceId": "2ced2357-2523-413a-bdeb-a3090c38cfda",
   "MinimumResourceAgeInDaysForChecking": 4,

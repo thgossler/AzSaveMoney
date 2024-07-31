@@ -83,8 +83,8 @@ Copyright (c) 2022 Thomas Gossler
 License: MIT
 Tags: Azure, cost, optimization, PowerShell
 
-.PARAMETER DirectoryId
-The ID of the Azure AD tenant. Can be set in defaults config file.
+.PARAMETER TenantId
+The ID of the Microsoft Entra ID tenant. Can be set in defaults config file.
 
 .PARAMETER AzEnvironment
 The Azure environment name (for options call "(Get-AzEnvironment).Name"). Can be set in defaults config file.
@@ -166,8 +166,11 @@ Warnings are suppressed by $WarningPreference='SilentlyContinue'.
 
 [CmdletBinding(SupportsShouldProcess)]
 param (
-    # The ID of the Azure AD tenant. Can be set in defaults config file.
-    [string]$DirectoryId,
+    # The ID of the Microsoft Entra ID AD tenant. Can be set in defaults config file.
+    [string]$TenantId = "",
+
+    # Deprecated. Use TenantId instead. Will be removed in future versions.
+    [string]$DirectoryId = $TenantId,
 
     # The Azure environment name (for options call "(Get-AzEnvironment).Name").
     # Can be set in defaults config file.
@@ -254,8 +257,18 @@ function Write-HostOrOutput {
 $defaultsConfig = (Test-Path -Path $PSScriptRoot/Defaults.json -PathType Leaf) ? 
     (Get-Content -Path $PSScriptRoot/Defaults.json -Raw | ConvertFrom-Json) : @{}
 
+# For backwards compatibility, the $DirectoryId argument is deprecated, $TenantId shall be used instead. Will be removed in future versions.
 if ([string]::IsNullOrWhiteSpace($DirectoryId) -and ![string]::IsNullOrWhiteSpace($defaultsConfig.DirectoryId)) {
     $DirectoryId = $defaultsConfig.DirectoryId
+}
+
+if ([string]::IsNullOrWhiteSpace($TenantId)) {
+    if (![string]::IsNullOrWhiteSpace($defaultsConfig.TenantId)) {
+        $TenantId = $defaultsConfig.TenantId
+    }
+    else {
+        $TenantId = $DirectoryId  # For backwards compatibility
+    }
 }
 if ([string]::IsNullOrWhiteSpace($AzEnvironment)) {
     if (![string]::IsNullOrWhiteSpace($defaultsConfig.AzEnvironment)) {
@@ -314,6 +327,10 @@ if ([string]::IsNullOrWhiteSpace($AutomationAccountResourceId) -and
 }
 
 # Alert invalid parameter combinations
+if ([string]::IsNullOrWhiteSpace($TenantId)) {
+    throw [System.ApplicationException]::new("TenantId is required")
+    return
+}
 if ($null -ne $ServicePrincipalCredential -and $UseSystemAssignedIdentity.IsPresent) {
     throw [System.ApplicationException]::new("Parameters 'ServicePrincipalCredential' and 'UseSystemAssignedIdentity' cannot be used together")
     return
@@ -326,8 +343,8 @@ if ($UseDeviceAuthentication.IsPresent -and $UseSystemAssignedIdentity.IsPresent
     throw [System.ApplicationException]::new("Parameters 'UseDeviceAuthentication' and 'UseSystemAssignedIdentity' cannot be used together")
     return
 }
-if ($null -ne $ServicePrincipalCredential -and [string]::IsNullOrEmpty($DirectoryId)) {
-    throw [System.ApplicationException]::new("Parameter 'ServicePrincipalCredential' requires 'DirectoryId' to be specified")
+if ($null -ne $ServicePrincipalCredential -and [string]::IsNullOrEmpty($TenantId)) {
+    throw [System.ApplicationException]::new("Parameter 'ServicePrincipalCredential' requires 'TenantId' to be specified")
     return
 }
 
@@ -1721,18 +1738,18 @@ if ($useSystemIdentity -eq $true) {
 elseif ($null -eq $ServicePrincipalCredential) {
     # Use user authentication (interactive or device)
     Write-HostOrOutput "Using user authentication..."
-    if (![string]::IsNullOrWhiteSpace($DirectoryId)) {
-        $loggedIn = Connect-AzAccount -Environment $AzEnvironment -UseDeviceAuthentication:$useDeviceAuth -TenantId $DirectoryId -WarningAction $warnAction -WhatIf:$false
+    if (![string]::IsNullOrWhiteSpace($TenantId)) {
+        $loggedIn = Connect-AzAccount -Environment $AzEnvironment -UseDeviceAuthentication:$useDeviceAuth -TenantId $TenantId -WarningAction $warnAction -WhatIf:$false
     }
     else {
         $loggedIn = Connect-AzAccount -Environment $AzEnvironment -UseDeviceAuthentication:$useDeviceAuth -WarningAction $warnAction -WhatIf:$false
-        $DirectoryId = (Get-AzContext).Tenant.Id
+        $TenantId = (Get-AzContext).Tenant.Id
     }
 }
 else {
     # Use service principal authentication
     Write-HostOrOutput "Using service principal authentication..."
-    $loggedIn = Connect-AzAccount -Environment $AzEnvironment -TenantId $DirectoryId -ServicePrincipal -Credential $ServicePrincipalCredential -WhatIf:$false
+    $loggedIn = Connect-AzAccount -Environment $AzEnvironment -TenantId $TenantId -ServicePrincipal -Credential $ServicePrincipalCredential -WhatIf:$false
 }
 if (!$loggedIn) {
     throw [System.ApplicationException]::new("Sign-in failed")
@@ -1741,7 +1758,7 @@ if (!$loggedIn) {
 Write-HostOrOutput "Signed in successfully."
 
 Write-HostOrOutput "$([Environment]::NewLine)Getting Azure subscriptions..."
-$allSubscriptions = @(Get-AzSubscription -TenantId $DirectoryId | Where-Object -Property State -NE Disabled | Sort-Object -Property Name)
+$allSubscriptions = @(Get-AzSubscription -TenantId $TenantId | Where-Object -Property State -NE Disabled | Sort-Object -Property Name)
 
 if ($allSubscriptions.Count -lt 1) {
     throw [System.ApplicationException]::new("No Azure subscriptions found")
@@ -1784,7 +1801,7 @@ foreach ($sub in $allSubscriptions) {
     Write-HostOrOutput "Processing subscription '$($sub.Name)' ($($sub.Id))..." -ForegroundColor Cyan
 
     # get all resources in current subscription
-    Select-AzSubscription -SubscriptionName $sub.Name -TenantId $DirectoryId -WhatIf:$false | Out-Null
+    Select-AzSubscription -SubscriptionName $sub.Name -TenantId $TenantId -WhatIf:$false | Out-Null
 
     $tempRoleAssignment = $null
     if ($TryMakingUserContributorTemporarily) {
