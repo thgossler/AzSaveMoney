@@ -79,7 +79,7 @@ again with the following special handling for status:
     automatically deleted.
 
 Project Link: https://github.com/thgossler/AzSaveMoney
-Copyright (c) 2022 Thomas Gossler
+Copyright (c) 2022-2024 Thomas Gossler
 License: MIT
 Tags: Azure, cost, optimization, PowerShell
 
@@ -160,9 +160,9 @@ Warnings are suppressed by $WarningPreference='SilentlyContinue'.
 #Requires -Modules PowerShellGet
 
 
-######################################################################
+################################################################################
 # Configuration Settings
-######################################################################
+################################################################################
 
 [CmdletBinding(SupportsShouldProcess)]
 param (
@@ -378,9 +378,9 @@ if (![string]::IsNullOrWhiteSpace($DocumentationUrl)) {
 
 $tab = '    '
 
-######################################################################
+################################################################################
 # Resource Type Hooks
-######################################################################
+################################################################################
 
 # Actions decided upon by hooks
 enum ResourceAction {
@@ -732,13 +732,8 @@ function Test-ResourceActionHook-microsoft-apimanagement-service($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-compute-virtualmachines($Resource) {
     $periodInDays = 35
-    $timeCreated = $Resource.Properties.TimeCreated
-    if ($Resource.Properties.ProvisioningState -ine 'Succeeded' -and $timeCreated -lt (Get-Date).AddDays(-$periodInDays)) {
-        return [ResourceAction]::markForDeletion, "The VM is not in a succeeded state for $periodInDays days."
-    }
     $vmStatus = Get-AzVM -Status -ResourceGroupName $Resource.ResourceGroup -VMName $Resource.Name
     if ($vmStatus.Statuses[1].Code -eq 'PowerState/deallocated' -or $vmStatus.Statuses[1].Code -eq 'PowerState/stopped') {
         $lastStatusChange = $vmStatus.Statuses[1].Time
@@ -764,7 +759,6 @@ function Test-ResourceActionHook-microsoft-compute-virtualmachines($Resource) {
     }
     return [ResourceAction]::none, "" 
 }
-
 function Test-ResourceActionHook-microsoft-compute-virtualmachinescalesets($Resource) {
     $periodInDays = 30
     if ($Resource.Sku.Capacity -eq 0) {
@@ -796,7 +790,6 @@ function Test-ResourceActionHook-microsoft-compute-virtualmachinescalesets($Reso
     }
     return [ResourceAction]::none, "" 
 }
-
 function Test-ResourceActionHook-microsoft-virtualmachineimages-imagetemplates($Resource) {
     $failedPeriodInDays = 35
     $updatePeriodInDays = 365
@@ -813,7 +806,6 @@ function Test-ResourceActionHook-microsoft-virtualmachineimages-imagetemplates($
     }
     return [ResourceAction]::none, "" 
 }
-
 function Test-ResourceActionHook-microsoft-containerinstance-containergroups($Resource) {
     $periodInDays = 35
     $currentTime = Get-Date
@@ -839,7 +831,6 @@ function Test-ResourceActionHook-microsoft-containerinstance-containergroups($Re
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-network-applicationgateways($Resource) {
     $periodInDays = 35
     $hasBackendPools = $Resource.Properties.BackendAddressPools.Count -gt 0
@@ -852,7 +843,6 @@ function Test-ResourceActionHook-microsoft-network-applicationgateways($Resource
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-sql-servers($Resource) {
     $periodInDays = 35
     $activeDatabases = Get-AzSqlDatabase -ServerName $Resource.name -ResourceGroupName $Resource.resourceGroup | Where-Object { $_.Status -eq 'Online' -and $_.DatabaseName -ne 'master' }
@@ -875,7 +865,6 @@ function Test-ResourceActionHook-microsoft-sql-servers($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-portal-dashboards($Resource) {
     $lenses = $Resource.Properties.Lenses
     if ($lenses.Count -lt 1) {
@@ -910,18 +899,13 @@ function Test-ResourceActionHook-microsoft-portal-dashboards($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-app-containerapps($Resource) {
     $periodInDays = 35
-    $isProvisioned = $Resource.Properties.ProvisioningState -eq 'Succeeded'
     $isRunning = $Resource.Properties.RunningStatus -eq 'Running'
-    $hasContainers = $Resource.Properties.Template.Containers.Count -gt 0
-    if (!$isProvisioned) {
-        return [ResourceAction]::markForDeletion, "The container app was not successfully provisioned."
-    }
     if (!$isRunning) {
         return [ResourceAction]::markForDeletion, "The container app is not running."
     }
+    $hasContainers = $Resource.Properties.Template.Containers.Count -gt 0
     if (!$hasContainers) {
         return [ResourceAction]::markForDeletion, "The container app has no containers."
     }
@@ -934,12 +918,7 @@ function Test-ResourceActionHook-microsoft-app-containerapps($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-app-managedenvironments($Resource) {
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The managed Container Apps environment was not successfully provisioned."
-    }
     $numOfContainerApps = Get-AzContainerApp -ResourceGroupName $Resource.resourceGroup | Where-Object { $_.ManagedEnvironmentId -ieq $Resource.Id }
     if ($numOfContainerApps.Count -lt 1) {
         return [ResourceAction]::markForDeletion, "The managed Container Apps environment has no container apps."
@@ -968,14 +947,9 @@ function Test-ResourceActionHook-microsoft-app-managedenvironments($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-cdn-profiles-cdn($Resource) {
     $periodInDays = 35
-    $isProvisioned = $Resource.Properties.ProvisioningState -eq 'Succeeded'
     $isActive = $Resource.Properties.ResourceState -eq 'Active'
-    if (!$isProvisioned) {
-        return [ResourceAction]::markForDeletion, "The classic CDN profile was not successfully provisioned."
-    }
     if (!$isActive) {
         return [ResourceAction]::markForDeletion, "The classic CDN profile is not active."
     }
@@ -1003,14 +977,9 @@ function Test-ResourceActionHook-microsoft-cdn-profiles-cdn($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-cdn-profiles-frontdoor($Resource) {
     $periodInDays = 35
-    $isProvisioned = $Resource.Properties.ProvisioningState -eq 'Succeeded'
     $isActive = $Resource.Properties.ResourceState -eq 'Active'
-    if (!$isProvisioned) {
-        return [ResourceAction]::markForDeletion, "The Frontdoor CDN profile was not successfully provisioned."
-    }
     if (!$isActive) {
         return [ResourceAction]::markForDeletion, "The Frontdoor CDN profile is not active."
     }
@@ -1045,14 +1014,9 @@ function Test-ResourceActionHook-microsoft-cdn-profiles-frontdoor($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-network-frontdoors($Resource) {
     $periodInDays = 35
-    $isProvisioned = $Resource.Properties.ProvisioningState -eq 'Succeeded'
     $isActive = $Resource.Properties.ResourceState -eq 'Enabled'
-    if (!$isProvisioned) {
-        return [ResourceAction]::markForDeletion, "The Frontdoor (classic) was not successfully provisioned."
-    }
     if (!$isActive) {
         return [ResourceAction]::markForDeletion, "The Frontdoor (classic) is not active."
     }
@@ -1089,7 +1053,6 @@ function Test-ResourceActionHook-microsoft-network-frontdoors($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-automation-automationaccounts($Resource) {
     $periodInDays = 35
     $runbooks = Get-AzAutomationRunbook -ResourceGroupName $Resource.resourceGroup -AutomationAccountName $Resource.name
@@ -1125,12 +1088,8 @@ function Test-ResourceActionHook-microsoft-automation-automationaccounts($Resour
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-recoveryservices-vaults($Resource) {
     $periodInDays = 35
-    if (!$Resource.Properties.ProvisioningState -ieq 'Succeeded') {
-        return [ResourceAction]::markForDeletion, "The recovery services vault was not successfully provisioned."
-    }
     $vmBackupItems = Get-AzRecoveryServicesBackupItem -VaultId $Resource.id -BackupManagementType AzureVM -WorkloadType AzureVM
     $sqlDbBackupItems = Get-AzRecoveryServicesBackupItem -VaultId $Resource.id -BackupManagementType AzureSQL -WorkloadType AzureSQLDatabase
     $storageFilesBackupItems = Get-AzRecoveryServicesBackupItem -VaultId $Resource.id -BackupManagementType AzureStorage -WorkloadType AzureFiles
@@ -1173,11 +1132,9 @@ function Test-ResourceActionHook-microsoft-recoveryservices-vaults($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-dataprotection-backupvaults($Resource) {
     return [ResourceAction]::markForDeletion, "This old type of Backup Vault is being phased out in favor of Recovery Services Vault."
 }
-
 function Test-ResourceActionHook-microsoft-managedidentity-userassignedidentities($Resource, $AllSubscriptionResources) {
     $hasAssociatedResources = $false
     foreach ($r in $AllSubscriptionResources) {
@@ -1197,13 +1154,8 @@ function Test-ResourceActionHook-microsoft-managedidentity-userassignedidentitie
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-kubernetes-connectedclusters($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The connected cluster was not successfully provisioned."
-    }
     $connectivityStatus = $Resource.Properties.ConnectivityStatus
     $lastConnectivityTime = $Resource.Properties.LastConnectivityTime
     if ($null -eq $lastConnectivityTime) {
@@ -1219,13 +1171,8 @@ function Test-ResourceActionHook-microsoft-kubernetes-connectedclusters($Resourc
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-containerservice-managedclusters($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The connected cluster was not successfully provisioned."
-    }
     $isRunning = $Resource.Properties.PowerState.code -ieq 'Running'
     if (!$isRunning) {
         return [ResourceAction]::markForDeletion, "The managed cluster is not running."
@@ -1256,13 +1203,8 @@ function Test-ResourceActionHook-microsoft-containerservice-managedclusters($Res
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-search-searchservices($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The search service was not successfully provisioned."
-    }
     $isRunning = $Resource.Properties.Status -ieq 'Running'
     if (!$isRunning) {
         return [ResourceAction]::markForDeletion, "The search service is not running."
@@ -1277,13 +1219,8 @@ function Test-ResourceActionHook-microsoft-search-searchservices($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-signalrservice-signalr($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The search service was not successfully provisioned."
-    }
     $isRunning = $Resource.Properties.ResourceStopped -ieq 'false'
     if (!$isRunning) {
         return [ResourceAction]::markForDeletion, "The SignalR service is not running."
@@ -1298,43 +1235,40 @@ function Test-ResourceActionHook-microsoft-signalrservice-signalr($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
+function Test-ResourceActionHook-microsoft-signalrservice-webpubsub($Resource) {
+    $periodInDays = 35
+    $isRunning = $Resource.Properties.ResourceStopped -ieq 'false'
+    if (!$isRunning) {
+        return [ResourceAction]::markForDeletion, "The Web PubSub service is not running."
+    }
+    $connectionOpenCount = Get-Metric -ResourceId $Resource.Id -MetricName 'ConnectionOpenCount' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $inboundTrafficBytes = Get-Metric -ResourceId $Resource.Id -MetricName 'InboundTraffic' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if (($null -eq $connectionOpenCount -or $connectionOpenCount.Sum -eq 0) -and ($null -eq $inboundTrafficBytes -or $inboundTrafficBytes.Sum -eq 0)) {
+        return [ResourceAction]::markForDeletion, "The Web PubSub service had no newly opened connections and no inbound traffic for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
 function Test-ResourceActionHook-microsoft-cognitiveservices-accounts($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The cognitive services account was not successfully provisioned."
-    }
     $successfulCalls = Get-Metric -ResourceId $Resource.Id -MetricName 'SuccessfulCalls' -AggregationType 'Total' -PeriodInDays $periodInDays
     if ($null -ne $successfulCalls -and $successfulCalls.Sum -eq 0) {
         return [ResourceAction]::markForDeletion, "The cognitive services account had no successful calls for $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-cognitiveservices-accounts-openai($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The Azure OpenAI cognitive service was not successfully provisioned."
-    }
     $azureOpenAIRequests = Get-Metric -ResourceId $Resource.Id -MetricName 'AzureOpenAIRequests' -AggregationType 'Total' -PeriodInDays $periodInDays
     if ($null -eq $azureOpenAIRequests -or $azureOpenAIRequests.Sum -eq 0) {
         return [ResourceAction]::markForDeletion, "The Azure OpenAI cognitive service had no requests for $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-machinelearning-workspaces($Resource) {
     return [ResourceAction]::markForDeletion, "Not supported anymore! Delete or migrate from 'Machine Learning Studio (classic)' to 'Azure Machine Learning'."
 }
-
 function Test-ResourceActionHook-microsoft-machinelearningservices-workspaces($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The machine learning workspace was not successfully provisioned."
-    }
     $activeNodes = Get-Metric -ResourceId $Resource.Id -MetricName 'Active Nodes' -AggregationType 'Total' -PeriodInDays $periodInDays
     $completedRuns = Get-Metric -ResourceId $Resource.Id -MetricName 'Completed Runs' -AggregationType 'Total' -PeriodInDays $periodInDays
     $startedRuns = Get-Metric -ResourceId $Resource.Id -MetricName 'Started Runs' -AggregationType 'Total' -PeriodInDays $periodInDays
@@ -1353,20 +1287,14 @@ function Test-ResourceActionHook-microsoft-machinelearningservices-workspaces($R
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-appconfiguration-configurationstores($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The machine learning workspace was not successfully provisioned."
-    }
     $httpIncomingRequestCount = Get-Metric -ResourceId $Resource.Id -MetricName 'HttpIncomingRequestCount' -AggregationType 'Total' -PeriodInDays $periodInDays
     if ($null -ne $httpIncomingRequestCount -and $httpIncomingRequestCount.Sum -eq 0) {
         return [ResourceAction]::markForDeletion, "The App Configuration store had no incoming HTTP requests for $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-dbformysql-flexibleservers($Resource) {
     $periodInDays = 35
     $isReady = $Resource.Properties.State -ieq 'Ready'
@@ -1380,7 +1308,6 @@ function Test-ResourceActionHook-microsoft-dbformysql-flexibleservers($Resource)
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-dbformysql-servers($Resource) {
     $periodInDays = 35
     $isReady = $Resource.Properties.UserVisibleState -ieq 'Ready'
@@ -1394,7 +1321,6 @@ function Test-ResourceActionHook-microsoft-dbformysql-servers($Resource) {
     }    
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-dbforpostgresql-flexibleservers($Resource) {
     $periodInDays = 35
     $isReady = $Resource.Properties.State -ieq 'Ready'
@@ -1408,7 +1334,6 @@ function Test-ResourceActionHook-microsoft-dbforpostgresql-flexibleservers($Reso
     }    
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-dbforpostgresql-servers($Resource) {
     $periodInDays = 35
     $isReady = $Resource.Properties.UserVisibleState -ieq 'Ready'
@@ -1422,17 +1347,11 @@ function Test-ResourceActionHook-microsoft-dbforpostgresql-servers($Resource) {
     }    
     return [ResourceAction]::markForDeletion, "Going out of support soon! Delete or migrate from 'Azure Database for PostgreSQL Single Server' to 'Azure Database for PostgreSQL Flexible Servers'."
 }
-
 function Test-ResourceActionHook-microsoft-dbforpostgresql-serversv2($Resource) {
     return Test-ResourceActionHook-microsoft-dbforpostgresql-servers($Resource)
 }
-
 function Test-ResourceActionHook-microsoft-eventgrid-namespaces($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The event grid namespace was not successfully provisioned."
-    }
     $numOfMqttSucessfullyDeliveredMessages = Get-Metric -ResourceId $Resource.Id -MetricName 'Mqtt.SuccessfulDeliveredMessages' -AggregationType 'Total' -PeriodInDays $periodInDays
     $numOfSuccessfulReceivedEvents = Get-Metric -ResourceId $Resource.Id -MetricName 'SuccessfulReceivedEvents' -AggregationType 'Total' -PeriodInDays $periodInDays
     if (($null -eq $numOfMqttSucessfullyDeliveredMessages -or $numOfMqttSucessfullyDeliveredMessages.Sum -eq 0) -and ($null -eq $numOfSuccessfulReceivedEvents -or $numOfSuccessfulReceivedEvents.Sum -eq 0)) {
@@ -1440,13 +1359,8 @@ function Test-ResourceActionHook-microsoft-eventgrid-namespaces($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-eventgrid-partnertopics($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The event grid partner topic was not successfully provisioned."
-    }
     $isActivated = $Resource.Properties.ActivationState -ieq 'Activated'
     if (!$isActivated) {
         return [ResourceAction]::markForDeletion, "The event grid partner topic is not activated."
@@ -1457,26 +1371,16 @@ function Test-ResourceActionHook-microsoft-eventgrid-partnertopics($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-eventgrid-systemtopics($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The event grid system topic was not successfully provisioned."
-    }
     $numOfSuccessfullyDeliveredEvents = Get-Metric -ResourceId $Resource.Id -MetricName 'DeliverySuccessCount' -AggregationType 'Total' -PeriodInDays $periodInDays
     if ($null -eq $numOfSuccessfullyDeliveredEvents -or $numOfSuccessfullyDeliveredEvents.Sum -eq 0) {
         return [ResourceAction]::markForDeletion, "The event grid system topic had no successfully delivered events for $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-eventgrid-topics-azure($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The event grid topic was not successfully provisioned."
-    }
     $hasAtLeastOneValidEventSubscription = $false
     $numOfEventSubscriptions = Get-AzEventGridSubscription -ResourceGroupName $Resource.resourceGroup -ResourceName $Resource.name -ProviderNamespace Microsoft.EventGrid -ResourceType topics
     foreach ($eventSubscription in $numOfEventSubscriptions) {
@@ -1494,13 +1398,8 @@ function Test-ResourceActionHook-microsoft-eventgrid-topics-azure($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-eventhub-namespaces($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The event grid topic was not successfully provisioned."
-    }
     $isActive = $Resource.Properties.Status -ieq 'Active'
     if (!$isActive) {
         return [ResourceAction]::markForDeletion, "The event hub namespace is not active."
@@ -1527,13 +1426,8 @@ function Test-ResourceActionHook-microsoft-eventhub-namespaces($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-monitor-accounts($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The Azure Monitor Workspace was not successfully provisioned."
-    }
     # TODO: Currently, no egress metrics are available for Azure Monitor Workspaces, using ingress metrics instead for the time being
     $eventsPerMinuteIngested = Get-Metric -ResourceId $Resource.Id -MetricName 'EventsPerMinuteIngested' -AggregationType 'Maximum' -PeriodInDays $periodInDays
     if ($null -eq $eventsPerMinuteIngested -or $eventsPerMinuteIngested.Maximum -eq 0) {
@@ -1541,38 +1435,23 @@ function Test-ResourceActionHook-microsoft-monitor-accounts($Resource) {
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-network-azurefirewalls($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The Azure Monitor Workspace was not successfully provisioned."
-    }
     $dataProcessed = Get-Metric -ResourceId $Resource.Id -MetricName 'DataProcessed' -AggregationType 'Total' -PeriodInDays $periodInDays
     if ($null -eq $dataProcessed -or $dataProcessed.Sum -eq 0) {
         return [ResourceAction]::markForDeletion, "The Azure Firewall had no data processed for $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-network-natgateways($Resource) {
     $periodInDays = 35
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The NAT gateway was not successfully provisioned."
-    }
     $byteCount = Get-Metric -ResourceId $Resource.Id -MetricName 'ByteCount' -AggregationType 'Total' -PeriodInDays $periodInDays
     if ($null -eq $byteCount -or $byteCount.Sum -eq 0) {
         return [ResourceAction]::markForDeletion, "The NAT gateway had no data processed for $periodInDays days."
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-network-networkwatchers-connectionmonitors($Resource) {
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The connection monitor was not successfully provisioned."
-    }
     $isRunning = $Resource.Properties.MonitoringStatus -ieq 'Running'
     if (!$isRunning) {
         return [ResourceAction]::markForDeletion, "The connection monitor is not running."
@@ -1583,27 +1462,117 @@ function Test-ResourceActionHook-microsoft-network-networkwatchers-connectionmon
     }
     return [ResourceAction]::none, ""
 }
-
 function Test-ResourceActionHook-microsoft-network-privatednszones($Resource) {
-    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
-    if ($hasProvisioningFailed) {
-        return [ResourceAction]::markForDeletion, "The private DNS zone was not successfully provisioned."
-    }
     $numOfRecordSets = $Resource.Properties.numberOfRecordSets
     if ($null -ne $numOfRecordSets -and $numOfRecordSets -lt 2) {
         return [ResourceAction]::markForDeletion, "The private DNS zone has no record sets."
     }
     return [ResourceAction]::none, ""
 }
+function Test-ResourceActionHook-microsoft-network-privateendpoints($Resource) {
+    $periodInDays = 35
+    $privateLinkServiceConnections = $Resource.Properties.PrivateLinkServiceConnections
+    if ($privateLinkServiceConnections.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The private endpoint has no private link service connections."
+    }
+    $atLeastOneServiceConnectionProvisionedSuccessfully = $false
+    $atLeastOneServiceConnectionConnected = $false
+    foreach ($privateLinkServiceConnection in $privateLinkServiceConnections) {
+        $hasProvisioningFailed = $privateLinkServiceConnection.Properties.ProvisioningState -ieq 'Failed'
+        if (!$hasProvisioningFailed) {
+            $atLeastOneServiceConnectionProvisionedSuccessfully = $true
+        }
+        $isConnected = $privateLinkServiceConnection.Properties.PrivateLinkServiceConnectionState.Status -ine 'Disconnected'
+        if ($isConnected) {
+            $atLeastOneServiceConnectionConnected = $true
+        }
+    }
+    if (!$atLeastOneServiceConnectionProvisionedSuccessfully) {
+        return [ResourceAction]::markForDeletion, "The private endpoint has no successfully provisioned private link service connections."
+    }
+    if (!$atLeastOneServiceConnectionConnected) {
+        return [ResourceAction]::markForDeletion, "The private endpoint has no connected private link service connections."
+    }
+    $bytesIn = Get-Metric -ResourceId $Resource.Id -MetricName 'PEBytesIn' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $bytesOut = Get-Metric -ResourceId $Resource.Id -MetricName 'PEBytesOut' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if (($null -eq $bytesIn -or $bytesIn.Sum -eq 0) -and ($null -eq $bytesOut -or $bytesOut.Sum -eq 0)) {
+        return [ResourceAction]::markForDeletion, "The private endpoint had no data in or out for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+function Test-ResourceActionHook-microsoft-network-virtualnetworkgateways($Resource) {
+    $periodInDays = 35
+    $expressRouteGatewayBitsPerSecond = Get-Metric -ResourceId $Resource.Id -MetricName 'ExpressRouteGatewayBitsPerSecond' -AggregationType 'Maximum' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    $scalableExpressRouteGatewayBitsPerSecond = Get-Metric -ResourceId $Resource.Id -MetricName 'ScalableExpressRouteGatewayBitsPerSecond' -AggregationType 'Maximum' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    $inboundFlowsCount = Get-Metric -ResourceId $Resource.Id -MetricName 'InboundFlowsCount' -AggregationType 'Maximum' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    $p2SConnectionCount = Get-Metric -ResourceId $Resource.Id -MetricName 'P2SConnectionCount' -AggregationType 'Total' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    $tunnelIngressBytes = Get-Metric -ResourceId $Resource.Id -MetricName 'TunnelIngressBytes' -AggregationType 'Total' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    $tunnelNatedBytes = Get-Metric -ResourceId $Resource.Id -MetricName 'TunnelNatedBytes' -AggregationType 'Total' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    if (($null -ne $expressRouteGatewayBitsPerSecond -and $expressRouteGatewayBitsPerSecond.Maximum -eq 0) -and
+        ($null -ne $scalableExpressRouteGatewayBitsPerSecond -and $scalableExpressRouteGatewayBitsPerSecond.Maximum -eq 0) -and
+        ($null -ne $inboundFlowsCount -and $inboundFlowsCount.Maximum -eq 0) -and
+        ($null -ne $p2SConnectionCount -and $p2SConnectionCount.Sum -eq 0) -and
+        ($null -ne $tunnelIngressBytes -and $tunnelIngressBytes.Sum -eq 0) -and
+        ($null -ne $tunnelNatedBytes -and $tunnelNatedBytes.Sum -eq 0)) 
+    {
+        return [ResourceAction]::markForDeletion, "The virtual network gateway had no data processed for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+function Test-ResourceActionHook-microsoft-streamanalytics-streamingjobs($Resource) {
+    $periodInDays = 35
+    $numOfInputEvents = Get-Metric -ResourceId $Resource.Id -MetricName 'InputEvents' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $numOfOutputEvents = Get-Metric -ResourceId $Resource.Id -MetricName 'OutputEvents' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if (($null -eq $numOfInputEvents -or $numOfInputEvents.Sum -eq 0) -and ($null -eq $numOfOutputEvents -or $numOfOutputEvents.Sum -eq 0)) {
+        return [ResourceAction]::markForDeletion, "The streaming job had no input or output events for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+function Test-ResourceActionHook-microsoft-synapse-workspaces($Resource) {
+    $periodInDays = 35
+    $builtinSqlPoolRequestsEnded = Get-Metric -ResourceId $Resource.Id -MetricName 'builtinSqlPoolRequestsEnded' -AggregationType 'Total' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    $integrationActivityRunsEnded = Get-Metric -ResourceId $Resource.Id -MetricName 'integrationActivityRunsEnded' -AggregationType 'Total' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    $integrationPipelineRunsEnded = Get-Metric -ResourceId $Resource.Id -MetricName 'integrationPipelineRunsEnded' -AggregationType 'Total' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    $integrationTriggerRunsEnded = Get-Metric -ResourceId $Resource.Id -MetricName 'integrationTriggerRunsEnded' -AggregationType 'Total' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    $sqlStreamingInputEvents = Get-Metric -ResourceId $Resource.Id -MetricName 'sqlStreamingInputEvents' -AggregationType 'Total' -PeriodInDays $periodInDays -OnErrorSilentlyContinue
+    if (($null -eq $builtinSqlPoolRequestsEnded -or $builtinSqlPoolRequestsEnded.Sum -eq 0) -and
+        ($null -eq $integrationActivityRunsEnded -or $integrationActivityRunsEnded.Sum -eq 0) -and
+        ($null -eq $integrationPipelineRunsEnded -or $integrationPipelineRunsEnded.Sum -eq 0) -and
+        ($null -eq $integrationTriggerRunsEnded -or $integrationTriggerRunsEnded.Sum -eq 0) -and
+        ($null -eq $sqlStreamingInputEvents -or $sqlStreamingInputEvents.Sum -eq 0)) 
+    {
+        return [ResourceAction]::markForDeletion, "The Synapse workspace had no activity for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+function Test-ResourceActionHook-microsoft-web-certificates($Resource) {
+    $expirationTime = $Resource.Properties.ExpirationDate
+    $currentTime = (Get-Date).ToUniversalTime()
+    if ($expirationTime -lt $currentTime) {
+        return [ResourceAction]::markForDeletion, "The certificate has expired."
+    }
+    return [ResourceAction]::none, ""
+}
+function Test-ResourceActionHook-microsoft-web-connections($Resource) {
+    $overallStatus = $Resource.Properties.OverallStatus
+    if ($overallStatus -ine 'Connected') {
+        return [ResourceAction]::markForDeletion, "The connection is disconnected."
+    }
+    $isConnectionEnabled = $Resource.Properties.ConnectionState -ieq 'Enabled'
+    if (!$isConnectionEnabled) {
+        return [ResourceAction]::markForDeletion, "The connection is disabled."
+    }
+    return [ResourceAction]::none, ""
+}
 
-# [ADD NEW HOOKS HERE], ideally insert them above in alphanumeric order
+# [ADD NEW HOOKS HERE]
 
 
-######################################################################
+################################################################################
 # Helper Functions
-######################################################################
+################################################################################
 
-function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$AggregationType, [int]$PeriodInDays = 35, [int]$TimeGrainInHours = 24) {
+function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$AggregationType, [int]$PeriodInDays = 35, [int]$TimeGrainInHours = 24, [switch]$OnErrorSilentlyContinue) {
     if ([string]::IsNullOrWhiteSpace($ResourceId)) { throw [System.ApplicationException]::new("ResourceId not specified")}
     if ([string]::IsNullOrWhiteSpace($MetricName)) { throw [System.ApplicationException]::new("MetricName not specified")}
     if ([string]::IsNullOrWhiteSpace($AggregationType)) { throw [System.ApplicationException]::new("AggregationType not specified")}
@@ -1611,15 +1580,16 @@ function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$Aggregati
     $retries = 3
     $delaySeconds = 3
     do {
-        if ($retries -ne 3) { Start-Sleep -Seconds $delaySeconds }
-        $retries -= 1
+        if ($retries -ne 3) { 
+            Write-HostOrOutput "$($tab)$($tab)Retrying in $delaySeconds seconds..." -ForegroundColor DarkGray
+            Start-Sleep -Seconds $delaySeconds 
+        }
         try {
             $metric = Get-AzMetric -ResourceId $ResourceId -MetricName $MetricName -AggregationType $AggregationType `
                 -StartTime (Get-Date -AsUTC).AddDays(-$PeriodInDays) -EndTime (Get-Date -AsUTC) `
                 -TimeGrain ([timespan]::FromHours($TimeGrainInHours).ToString())
         } catch {
             $metric = $null
-            Write-HostOrOutput "Retrying in $delaySeconds seconds..."
             if ($retries -eq 1) {
                 # Workaround: Get-AzMetric doesn't work sometimes with TimeGrain specified (https://github.com/Azure/azure-powershell/issues/22750)
                 $metric = Get-AzMetric -ResourceId $ResourceId -MetricName $MetricName -AggregationType $AggregationType `
@@ -1636,7 +1606,9 @@ function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$Aggregati
         $retries -= 1
         if ($null -eq $metric -and $retries -gt 0) {
             if ($Error[0].Exception.Message.Contains('BadRequest')) {
-                Write-HostOrOutput "$($tab)$($tab)Metric could not be retrieved (response indicates BadRequest, metric perhaps unsupported at time of creation of the resource)" -ForegroundColor DarkGray
+                if (!$OnErrorSilentlyContinue) {
+                    Write-HostOrOutput "$($tab)$($tab)Metric could not be retrieved (response indicates BadRequest, metric perhaps unsupported for this specific resource)" -ForegroundColor DarkGray
+                }
                 $retries = 0
             }
             else {
@@ -1645,7 +1617,9 @@ function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$Aggregati
         }
     } while ($null -eq $metric -and $retries -gt 0)
     if ($null -eq $metric) {
-        Write-HostOrOutput "$($tab)$($tab)Failed to get metric '$MetricName' for resource '$ResourceId'" -ForegroundColor Red
+        if (!$OnErrorSilentlyContinue) {
+            Write-HostOrOutput "$($tab)$($tab)Failed to get metric '$MetricName' for resource '$ResourceId'" -ForegroundColor Red
+        }
         return $null
     }
     $metricData = $metric.Data
@@ -1855,9 +1829,9 @@ function Get-UserConfirmationWithTimeout(
 }
 
 
-######################################################################
+################################################################################
 # Execution
-######################################################################
+################################################################################
 
 $WarningPreference = 'SilentlyContinue'  # to suppress upcoming breaking changes warnings
 
@@ -1909,6 +1883,9 @@ if (!$loggedIn) {
     return
 }
 Write-HostOrOutput "Signed in successfully."
+
+# Measure runtime
+$stopWatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 Write-HostOrOutput "$([Environment]::NewLine)Getting Azure subscriptions..."
 $allSubscriptions = @(Get-AzSubscription -TenantId $TenantId | Where-Object -Property State -NE Disabled | Sort-Object -Property Name)
@@ -2152,7 +2129,15 @@ foreach ($sub in $allSubscriptions) {
                 $action = [ResourceAction]::none
                 $reason = ""
                 try {
-                    $action, $reason = Invoke-Command -ScriptBlock $hook -ArgumentList $resource, $resources
+                    # Test general resource provisioning state first which applies to most resources
+                    $provisioningState = $resource.Properties.ProvisioningState
+                    if (![string]::IsNullOrWhiteSpace($provisioningState) -and $provisioningState -ine 'Succeeded') {
+                        $action = [ResourceAction]::markForDeletion
+                        $reason = "The resource is not successfully provisioned."
+                    }
+                    else {
+                        $action, $reason = Invoke-Command -ScriptBlock $hook -ArgumentList $resource, $resources
+                    }
                 }
                 catch {
                     $action = [ResourceAction]::none
@@ -2313,4 +2298,6 @@ if ($usedResourceTypesWithoutHook.Count -gt 0) {
     }
 }
 
-Write-HostOrOutput "$([System.Environment]::NewLine)Finished." -ForegroundColor Green
+$stopWatch.Stop()
+$elapsedTime = $stopWatch.Elapsed
+Write-HostOrOutput "$([Environment]::NewLine)Finished after $($elapsedTime.Hours)h $($elapsedTime.Minutes)m $($elapsedTime.Seconds)s."

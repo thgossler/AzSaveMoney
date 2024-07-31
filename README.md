@@ -15,9 +15,7 @@
   <a href="https://github.com/thgossler/AzSaveMoney">
     <img src="images/logo.png" alt="Logo" width="80" height="80">
   </a>
-
   <h1 align="center">AzSaveMoney</h1>
-
   <p align="center">
     Clean-up unused resources and save money and energy in your Azure environment.
     <br />
@@ -33,7 +31,6 @@
   </p>
 </div>
 
-
 ## Overview
 
 This project is intended to clean up large Azure environments and save money and energy in the process. It was inspired by the project [`itoleck/AzureSaveMoney`](https://github.com/itoleck/AzureSaveMoney) but is not derived from it.
@@ -43,6 +40,7 @@ The script [`MarkAndDeleteUnusedResources.ps1`](MarkAndDeleteUnusedResources.ps1
 > **Note**: The script supports the -WhatIf parameter to first simulate what it would do. And it was also implemented to be defensive, i.e. by default only empty resource groups are deleted (and only after confirmation), nothing else.
 
 Example usage:
+
 ```powershell
 # Display usage help
 Get-Help .\MarkAndDeleteUnusedResources.ps1 -Detailed
@@ -101,10 +99,20 @@ There are multiple tags which are set when a resource is marked as  subject for 
 `SubjectForDeletion-Hint` (optional).
 
 The `SubjectForDeletion` tag has one of the following values after the script ran and the tag was created:
+
 - `suspected`: resource marked as subject for deletion
 - `suspectedSubResources`: at least one sub resource is subject for deletion
 
 As long as the tag `SubjectForDeletion` has a value starting with `suspected...` the resource is reevaluated in every run and the tag value is updated (overwritten). You can update the tag value to one of the following values in order to influence the script behavior in subsequent runs (see below).
+
+Here is an example Azure Resource Graph query to show all resources which are tagged with SubjectForDeletion and are suspected to be unused:
+
+```kusto
+resources 
+| where tags['SubjectForDeletion'] != '' and tags['SubjectForDeletion'] startswith 'suspected'
+| project name, type, subjectForDeletionReason=tags['SubjectForDeletion-Reason'], resourceGroup, subscriptionId, id
+| sort by name asc 
+```
 
 The following example process is suggested for large organizations:
 
@@ -119,7 +127,6 @@ The following example process is suggested for large organizations:
 
 The script [`RemoveTagsFromAllResourcesAndGroups.ps1`](RemoveTagsFromAllResourcesAndGroups.ps1) can be used to remove all tags again.
 
-
 ## Contributing
 
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
@@ -133,7 +140,6 @@ Don't forget to give the project a star :wink: Thanks!
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-
 ## Donate
 
 If you wish to use the tool but are unable to contribute, please consider donating an amount that reflects its value to you. You can do so either via PayPal
@@ -142,11 +148,9 @@ If you wish to use the tool but are unable to contribute, please consider donati
 
 or via [GitHub Sponsors](https://github.com/sponsors/thgossler).
 
-
 ## License
 
 Distributed under the MIT License. See [`LICENSE`](https://github.com/thgossler/AzSaveMoney/blob/main/LICENSE) for more information.
-
 
 <!-- MARKDOWN LINKS & IMAGES (https://www.markdownguide.org/basic-syntax/#reference-style-links) -->
 [contributors-shield]: https://img.shields.io/github/contributors/thgossler/AzSaveMoney.svg
