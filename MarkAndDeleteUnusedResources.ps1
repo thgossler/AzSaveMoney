@@ -935,6 +935,40 @@ function Test-ResourceActionHook-microsoft-app-containerapps($Resource) {
     return [ResourceAction]::none, ""
 }
 
+function Test-ResourceActionHook-microsoft-app-managedenvironments($Resource) {
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The managed Container Apps environment was not successfully provisioned."
+    }
+    $numOfContainerApps = Get-AzContainerApp -ResourceGroupName $Resource.resourceGroup | Where-Object { $_.ManagedEnvironmentId -ieq $Resource.Id }
+    if ($numOfContainerApps.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The managed Container Apps environment has no container apps."
+    }
+    $atLeastOneAppProvisionedSuccessfully = $false
+    foreach ($containerApp in $numOfContainerApps) {
+        if ($containerApp.ProvisioningState -ieq 'Succeeded') {
+            $atLeastOneAppProvisionedSuccessfully = $true
+            break
+        }
+    }
+    if (!$atLeastOneAppProvisionedSuccessfully) {
+        return [ResourceAction]::markForDeletion, "The managed Container Apps environment has no successfully provisioned container apps."
+    }
+    $atLeastOneAppIsNotSubjectToDeletion = $false
+    foreach ($containerApp in $numOfContainerApps) {
+        $tags = $containerApp.Tags
+        $isSubjectForDeletion = ($null -ne $tags) -and ($tags.SubjectForDeletion ?? "") -ilike 'suspected*'
+        if (!$isSubjectForDeletion) {
+            $atLeastOneAppIsNotSubjectToDeletion = $true
+            break
+        }
+    }
+    if (!$atLeastOneAppIsNotSubjectToDeletion) {
+        return [ResourceAction]::markForDeletion, "All container apps in the managed Container Apps environment are subject for deletion."
+    }
+    return [ResourceAction]::none, ""
+}
+
 function Test-ResourceActionHook-microsoft-cdn-profiles-cdn($Resource) {
     $periodInDays = 35
     $isProvisioned = $Resource.Properties.ProvisioningState -eq 'Succeeded'
@@ -1461,6 +1495,107 @@ function Test-ResourceActionHook-microsoft-eventgrid-topics-azure($Resource) {
     return [ResourceAction]::none, ""
 }
 
+function Test-ResourceActionHook-microsoft-eventhub-namespaces($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The event grid topic was not successfully provisioned."
+    }
+    $isActive = $Resource.Properties.Status -ieq 'Active'
+    if (!$isActive) {
+        return [ResourceAction]::markForDeletion, "The event hub namespace is not active."
+    }
+    $eventHubInstances = Get-AzEventHub -NamespaceName $Resource.name -ResourceGroupName $Resource.resourceGroup
+    if ($eventHubInstances.Count -lt 1) {
+        return [ResourceAction]::markForDeletion, "The event hub namespace has no event hubs."
+    }
+    $hasAtLeastOneActiveInstance = $false
+    foreach ($eventHubInstance in $eventHubInstances) {
+        $isActive = $eventHubInstance.Status -ieq 'Active'
+        if ($isActive) {
+            $hasAtLeastOneActiveInstance = $true
+            break
+        }
+    }
+    if (!$hasAtLeastOneActiveInstance) {
+        return [ResourceAction]::markForDeletion, "The event hub namespace has no active event hubs."
+    }
+    $incomingMessages = Get-Metric -ResourceId $Resource.Id -MetricName 'IncomingMessages' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $incomingRequests = Get-Metric -ResourceId $Resource.Id -MetricName 'IncomingRequests' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if (($null -eq $incomingMessages -or $incomingMessages.Sum -eq 0) -and ($null -eq $incomingRequests -or $incomingRequests.Sum -eq 0)) {
+        return [ResourceAction]::markForDeletion, "The event hub namespace had no incoming messages and no incoming requests for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-monitor-accounts($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The Azure Monitor Workspace was not successfully provisioned."
+    }
+    # TODO: Currently, no egress metrics are available for Azure Monitor Workspaces, using ingress metrics instead for the time being
+    $eventsPerMinuteIngested = Get-Metric -ResourceId $Resource.Id -MetricName 'EventsPerMinuteIngested' -AggregationType 'Maximum' -PeriodInDays $periodInDays
+    if ($null -eq $eventsPerMinuteIngested -or $eventsPerMinuteIngested.Maximum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The Azure Monitor Workspace had no ingested events for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-network-azurefirewalls($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The Azure Monitor Workspace was not successfully provisioned."
+    }
+    $dataProcessed = Get-Metric -ResourceId $Resource.Id -MetricName 'DataProcessed' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -eq $dataProcessed -or $dataProcessed.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The Azure Firewall had no data processed for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-network-natgateways($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The NAT gateway was not successfully provisioned."
+    }
+    $byteCount = Get-Metric -ResourceId $Resource.Id -MetricName 'ByteCount' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -eq $byteCount -or $byteCount.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The NAT gateway had no data processed for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-network-networkwatchers-connectionmonitors($Resource) {
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The connection monitor was not successfully provisioned."
+    }
+    $isRunning = $Resource.Properties.MonitoringStatus -ieq 'Running'
+    if (!$isRunning) {
+        return [ResourceAction]::markForDeletion, "The connection monitor is not running."
+    }
+    $endpoints = $Resource.Properties.Endpoints
+    if ($endpoints.Count -lt 2) {
+        return [ResourceAction]::markForDeletion, "The connection monitor has less than 2 endpoints (shall have at least one source and destination)."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-network-privatednszones($Resource) {
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The private DNS zone was not successfully provisioned."
+    }
+    $numOfRecordSets = $Resource.Properties.numberOfRecordSets
+    if ($null -ne $numOfRecordSets -and $numOfRecordSets -lt 2) {
+        return [ResourceAction]::markForDeletion, "The private DNS zone has no record sets."
+    }
+    return [ResourceAction]::none, ""
+}
+
 # [ADD NEW HOOKS HERE], ideally insert them above in alphanumeric order
 
 
@@ -1570,7 +1705,13 @@ function Add-SubjectForDeletionTags
         elseif ($null -ne $tags.$subjectForDeletionHintTagName) {
             $tagsToBeRemoved.Add($subjectForDeletionHintTagName, $tags.$subjectForDeletionHintTagName)
         }
-        $result = Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $newTags -Operation Merge -WhatIf:$WhatIfPreference
+        $result = $null
+        try {
+            $result = Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -Tag $newTags -Operation Merge -WhatIf:$WhatIfPreference
+        }
+        catch {
+            Write-HostOrOutput "$($tab)$($tab)Failed to set tags: $($_.Exception.Message)" -ForegroundColor Red
+        }
         if (!$SuppressHostOutput -and $result) {
             Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Set tags " -NoNewline
             Write-HostOrOutput ($newTags | ConvertTo-Json -Compress) -ForegroundColor DarkGray
@@ -1578,7 +1719,13 @@ function Add-SubjectForDeletionTags
     }
     # Remove existing tags which are not specified
     if ($tagsToBeRemoved.Keys.Count -gt 0) {
-        $result = Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $tagsToBeRemoved -Operation Delete -WhatIf:$WhatIfPreference | Out-Null
+        $result = $null
+        try {
+            $result = Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $tagsToBeRemoved -Operation Delete -WhatIf:$WhatIfPreference
+        }
+        catch {
+            Write-HostOrOutput "$($tab)$($tab)Failed to remove tags: $($_.Exception.Message)" -ForegroundColor Red
+        }
         if (!$SuppressHostOutput -and $result) {
             Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Removed tags " -NoNewline
             Write-HostOrOutput ($tagsToBeRemoved | ConvertTo-Json -Compress) -ForegroundColor DarkGray
@@ -1622,7 +1769,13 @@ function Remove-SubjectForDeletionTags
         $removeNecessary = $true
     }
     if ($removeNecessary) {
-        $result = Update-AzTag -ResourceId $resourceOrGroupId -tag $tagsToRemove -Operation Delete -WhatIf:$WhatIfPreference | Out-Null
+        $result = $null
+        try {
+            $result = Update-AzTag -ResourceId $resourceOrGroupId -tag $tagsToRemove -Operation Delete -WhatIf:$WhatIfPreference
+        }
+        catch {
+            Write-HostOrOutput "$($tab)$($tab)Failed to remove tags: $($_.Exception.Message)" -ForegroundColor Red
+        }
         if (!$SuppressHostOutput -and $result) {
             Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Removed tags " -NoNewline
             Write-HostOrOutput ($tagsToRemove | ConvertTo-Json -Compress) -ForegroundColor DarkGray
