@@ -229,6 +229,8 @@ param (
     [switch]$EnforceStdout
 )
 
+$ErrorActionPreference = "Stop"
+
 function Write-HostOrOutput {
     param (
         [Parameter(Mandatory = $false, Position = 0)]
@@ -349,7 +351,7 @@ enum SubjectForDeletionStatus {  # Supported values for the SubjectForDeletion t
 
 # General explanatory and constant tag/value applied to all tagged resource if value is not empty (e.g. URL to docs for the approach)
 $subjectForDeletionHintTagName = "SubjectForDeletion-Hint"
-$subjectForDeletionHintTagValue = "Update the '$subjectForDeletionTagName' tag value to '$([SubjectForDeletionStatus]::rejected.ToString())' if still needed!"
+$subjectForDeletionHintTagValue = "Update the '$subjectForDeletionTagName' tag to value '$([SubjectForDeletionStatus]::rejected.ToString())' if it shall not be deleted!"
 if ([string]::IsNullOrWhiteSpace($DocumentationUrl) -and ![string]::IsNullOrWhiteSpace($defaultsConfig.DocumentationUrl)) {
     $DocumentationUrl = $defaultsConfig.DocumentationUrl
 }
@@ -396,14 +398,11 @@ function Test-ResourceActionHook-microsoft-compute-disks($Resource) {
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-compute-images($Resource) {
-    try {
-        $sourceVm = Get-AzResource -ResourceId $Resource.Properties.sourceVirtualMachine.Id -ErrorAction Ignore -WarningAction Ignore
-        if ($sourceVm) {
-            Write-HostOrOutput "$($tab)$($tab)Source VM of a usually generalized image is still existing" -ForegroundColor DarkGray
-            return [ResourceAction]::markForDeletion, "The source VM (usually generalized) of the image still exists."
-        }
+    $sourceVm = Get-AzResource -ResourceId $Resource.Properties.sourceVirtualMachine.Id
+    if ($sourceVm) {
+        Write-HostOrOutput "$($tab)$($tab)Source VM of a usually generalized image is still existing" -ForegroundColor DarkGray
+        return [ResourceAction]::markForDeletion, "The source VM (usually generalized) of the image still exists."
     }
-    catch {}
     return [ResourceAction]::none, ""
 }
 function Test-ResourceActionHook-microsoft-compute-snapshots($Resource) {
@@ -592,10 +591,9 @@ function Test-ResourceActionHook-microsoft-notificationhubs-namespaces($Resource
         ResourceGroupName = $Resource.ResourceGroup
         ResourceName      = $Resource.Name
         ApiVersion        = '2017-04-01'
-        ErrorAction       = 'SilentlyContinue'
     }
     $notificationHub = Get-AzResource @parameters
-    if (!$notificationHub) {
+    if ($null -eq $notificationHub) {
         return [ResourceAction]::markForDeletion, "The notification hub has no hubs."
     }
     return [ResourceAction]::none, ""
@@ -651,10 +649,9 @@ function Test-ResourceActionHook-microsoft-web-sites-functionapp($Resource) {
             ResourceGroupName = $Resource.ResourceGroup
             ResourceName      = $Resource.Name
             ApiVersion        = '2022-03-01'
-            ErrorAction       = 'SilentlyContinue'
         }
         $functions = Get-AzResource @GetAzResourceParameters
-        if (!$functions) {
+        if ($nul -eq $functions) {
             Write-HostOrOutput "$($tab)$($tab)Function app has no functions" -ForegroundColor DarkGray
             return [ResourceAction]::markForDeletion, "The function app has no functions."
         }
@@ -1281,6 +1278,172 @@ function Test-ResourceActionHook-microsoft-machinelearning-workspaces($Resource)
     return [ResourceAction]::markForDeletion, "Not supported anymore! Delete or migrate from 'Machine Learning Studio (classic)' to 'Azure Machine Learning'."
 }
 
+function Test-ResourceActionHook-microsoft-machinelearningservices-workspaces($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The machine learning workspace was not successfully provisioned."
+    }
+    $activeNodes = Get-Metric -ResourceId $Resource.Id -MetricName 'Active Nodes' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $completedRuns = Get-Metric -ResourceId $Resource.Id -MetricName 'Completed Runs' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $startedRuns = Get-Metric -ResourceId $Resource.Id -MetricName 'Started Runs' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $wasUnused = $true
+    if ($null -ne $activeNodes -and $activeNodes.Sum -gt 0) {
+        $wasUnused = $false
+    }
+    if ($null -ne $completedRuns -and $completedRuns.Sum -gt 0) {
+        $wasUnused = $false
+    }
+    if ($null -ne $startedRuns -and $startedRuns.Sum -gt 0) {
+        $wasUnused = $false
+    }
+    if ($wasUnused) {
+        return [ResourceAction]::markForDeletion, "The machine learning workspace had no runs or active nodes for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-appconfiguration-configurationstores($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The machine learning workspace was not successfully provisioned."
+    }
+    $httpIncomingRequestCount = Get-Metric -ResourceId $Resource.Id -MetricName 'HttpIncomingRequestCount' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $httpIncomingRequestCount -and $httpIncomingRequestCount.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The App Configuration store had no incoming HTTP requests for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-dbformysql-flexibleservers($Resource) {
+    $periodInDays = 35
+    $isReady = $Resource.Properties.State -ieq 'Ready'
+    if (!$isReady) {
+        return [ResourceAction]::markForDeletion, "The MySQL flexible server is not ready."
+    }
+    $activeConnections = Get-Metric -ResourceId $Resource.Id -MetricName 'active_connections' -AggregationType 'Maximum' -PeriodInDays $periodInDays
+    $numOfQueries = Get-Metric -ResourceId $Resource.Id -MetricName 'Queries' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $activeConnections -and $activeConnections.Maximum -eq 0 -and $null -ne $numOfQueries -and $numOfQueries.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The MySQL flexible server had no active connections and no queries for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-dbformysql-servers($Resource) {
+    $periodInDays = 35
+    $isReady = $Resource.Properties.UserVisibleState -ieq 'Ready'
+    if (!$isReady) {
+        return [ResourceAction]::markForDeletion, "The MySQL server is not ready."
+    }
+    $activeConnections = Get-Metric -ResourceId $Resource.Id -MetricName 'active_connections' -AggregationType 'Maximum' -PeriodInDays $periodInDays
+    $networkIngressBytes = Get-Metric -ResourceId $Resource.Id -MetricName 'network_bytes_ingress' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $activeConnections -and $activeConnections.Maximum -eq 0 -and $null -ne $networkIngressBytes -and $networkIngressBytes.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The MySQL server had no active connections and no data ingress for $periodInDays days."
+    }    
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-dbforpostgresql-flexibleservers($Resource) {
+    $periodInDays = 35
+    $isReady = $Resource.Properties.State -ieq 'Ready'
+    if (!$isReady) {
+        return [ResourceAction]::markForDeletion, "The PostgreSQL flexible server is not ready."
+    }
+    $activeConnections = Get-Metric -ResourceId $Resource.Id -MetricName 'active_connections' -AggregationType 'Maximum' -PeriodInDays $periodInDays
+    $networkIngressBytes = Get-Metric -ResourceId $Resource.Id -MetricName 'network_bytes_ingress' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $activeConnections -and $activeConnections.Maximum -eq 0 -and $null -ne $networkIngressBytes -and $networkIngressBytes.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The PostgreSQL flexible had no active connections and no data ingress for $periodInDays days."
+    }    
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-dbforpostgresql-servers($Resource) {
+    $periodInDays = 35
+    $isReady = $Resource.Properties.UserVisibleState -ieq 'Ready'
+    if (!$isReady) {
+        return [ResourceAction]::markForDeletion, "The PostgreSQL server is not ready."
+    }
+    $activeConnections = Get-Metric -ResourceId $Resource.Id -MetricName 'active_connections' -AggregationType 'Maximum' -PeriodInDays $periodInDays
+    $networkIngressBytes = Get-Metric -ResourceId $Resource.Id -MetricName 'network_bytes_ingress' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $activeConnections -and $activeConnections.Maximum -eq 0 -and $null -ne $networkIngressBytes -and $networkIngressBytes.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The PostgreSQL server had no active connections and no data ingress for $periodInDays days."
+    }    
+    return [ResourceAction]::markForDeletion, "Going out of support soon! Delete or migrate from 'Azure Database for PostgreSQL Single Server' to 'Azure Database for PostgreSQL Flexible Servers'."
+}
+
+function Test-ResourceActionHook-microsoft-dbforpostgresql-serversv2($Resource) {
+    return Test-ResourceActionHook-microsoft-dbforpostgresql-servers($Resource)
+}
+
+function Test-ResourceActionHook-microsoft-eventgrid-namespaces($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The event grid namespace was not successfully provisioned."
+    }
+    $numOfMqttSucessfullyDeliveredMessages = Get-Metric -ResourceId $Resource.Id -MetricName 'Mqtt.SuccessfulDeliveredMessages' -AggregationType 'Total' -PeriodInDays $periodInDays
+    $numOfSuccessfulReceivedEvents = Get-Metric -ResourceId $Resource.Id -MetricName 'SuccessfulReceivedEvents' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if (($null -eq $numOfMqttSucessfullyDeliveredMessages -or $numOfMqttSucessfullyDeliveredMessages.Sum -eq 0) -and ($null -eq $numOfSuccessfulReceivedEvents -or $numOfSuccessfulReceivedEvents.Sum -eq 0)) {
+        return [ResourceAction]::markForDeletion, "The event grid namespace had no successful delivered MQTT messages and no successful received events for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-eventgrid-partnertopics($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The event grid partner topic was not successfully provisioned."
+    }
+    $isActivated = $Resource.Properties.ActivationState -ieq 'Activated'
+    if (!$isActivated) {
+        return [ResourceAction]::markForDeletion, "The event grid partner topic is not activated."
+    }
+    $numOfSuccessfullyDeliveredEvents = Get-Metric -ResourceId $Resource.Id -MetricName 'DeliverySuccessCount' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -ne $numOfSuccessfullyDeliveredEvents -and $numOfSuccessfullyDeliveredEvents.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The event grid partner topic had no successfully delivered events for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-eventgrid-systemtopics($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The event grid system topic was not successfully provisioned."
+    }
+    $numOfSuccessfullyDeliveredEvents = Get-Metric -ResourceId $Resource.Id -MetricName 'DeliverySuccessCount' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -eq $numOfSuccessfullyDeliveredEvents -or $numOfSuccessfullyDeliveredEvents.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The event grid system topic had no successfully delivered events for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
+function Test-ResourceActionHook-microsoft-eventgrid-topics-azure($Resource) {
+    $periodInDays = 35
+    $hasProvisioningFailed = $Resource.Properties.ProvisioningState -ieq 'Failed'
+    if ($hasProvisioningFailed) {
+        return [ResourceAction]::markForDeletion, "The event grid topic was not successfully provisioned."
+    }
+    $hasAtLeastOneValidEventSubscription = $false
+    $numOfEventSubscriptions = Get-AzEventGridSubscription -ResourceGroupName $Resource.resourceGroup -ResourceName $Resource.name -ProviderNamespace Microsoft.EventGrid -ResourceType topics
+    foreach ($eventSubscription in $numOfEventSubscriptions) {
+        if ($eventSubscription.ProvisioningState -ieq 'Succeeded') {
+            $hasAtLeastOneValidEventSubscription = $true
+            break
+        }
+    }
+    if ($numOfEventSubscriptions.Count -lt 1 -or !$hasAtLeastOneValidEventSubscription) {
+        return [ResourceAction]::markForDeletion, "The event grid topic has no successful event subscriptions."
+    }
+    $numOfSuccessfullyDeliveredEvents = Get-Metric -ResourceId $Resource.Id -MetricName 'DeliverySuccessCount' -AggregationType 'Total' -PeriodInDays $periodInDays
+    if ($null -eq $numOfSuccessfullyDeliveredEvents -or $numOfSuccessfullyDeliveredEvents.Sum -eq 0) {
+        return [ResourceAction]::markForDeletion, "The event grid topic had no successfully delivered events for $periodInDays days."
+    }
+    return [ResourceAction]::none, ""
+}
+
 # [ADD NEW HOOKS HERE], ideally insert them above in alphanumeric order
 
 
@@ -1301,8 +1464,7 @@ function Get-Metric([string]$ResourceId, [string]$MetricName, [string]$Aggregati
         try {
             $metric = Get-AzMetric -ResourceId $ResourceId -MetricName $MetricName -AggregationType $AggregationType `
                 -StartTime (Get-Date -AsUTC).AddDays(-$PeriodInDays) -EndTime (Get-Date -AsUTC) `
-                -TimeGrain ([timespan]::FromHours($TimeGrainInHours).ToString()) `
-                -ErrorAction Continue
+                -TimeGrain ([timespan]::FromHours($TimeGrainInHours).ToString())
         } catch {
             $metric = $null
             Write-HostOrOutput "Retrying in $delaySeconds seconds..."
@@ -1393,13 +1555,17 @@ function Add-SubjectForDeletionTags
         }
         $result = Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $newTags -Operation Merge -WhatIf:$WhatIfPreference
         if (!$SuppressHostOutput -and $result) {
-            Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Added tags " -NoNewline
-            Write-HostOrOutput ($newTags | ConvertTo-Json -Compress) -ForegroundColor White
+            Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Set tags " -NoNewline
+            Write-HostOrOutput ($newTags | ConvertTo-Json -Compress) -ForegroundColor DarkGray
         }
     }
     # Remove existing tags which are not specified
     if ($tagsToBeRemoved.Keys.Count -gt 0) {
-        Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $tagsToBeRemoved -Operation Delete -WhatIf:$WhatIfPreference | Out-Null
+        $result = Update-AzTag -ResourceId $ResourceOrGroup.ResourceId -tag $tagsToBeRemoved -Operation Delete -WhatIf:$WhatIfPreference | Out-Null
+        if (!$SuppressHostOutput -and $result) {
+            Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Removed tags " -NoNewline
+            Write-HostOrOutput ($tagsToBeRemoved | ConvertTo-Json -Compress) -ForegroundColor DarkGray
+        }
     }
 }
 
@@ -1407,10 +1573,11 @@ function Remove-SubjectForDeletionTags
 {
     [CmdletBinding(SupportsShouldProcess)]
     param (
-        $ResourceOrGroup    
+        $ResourceOrGroup,
+        [switch]$SuppressHostOutput = $false
     )
     $tags = $ResourceOrGroup.Tags
-    if (!$tags) { return }
+    if ($null -eq $tags) { return }
     $resourceOrGroupId = $ResourceOrGroup.ResourceId
     $subjectForDeletionTagValue = ($tags.$subjectForDeletionTagName ?? '').Trim()
     $status = $null
@@ -1438,7 +1605,11 @@ function Remove-SubjectForDeletionTags
         $removeNecessary = $true
     }
     if ($removeNecessary) {
-        Update-AzTag -ResourceId $resourceOrGroupId -tag $tagsToRemove -Operation Delete -WhatIf:$WhatIfPreference | Out-Null
+        $result = Update-AzTag -ResourceId $resourceOrGroupId -tag $tagsToRemove -Operation Delete -WhatIf:$WhatIfPreference | Out-Null
+        if (!$SuppressHostOutput -and $result) {
+            Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Removed tags " -NoNewline
+            Write-HostOrOutput ($tagsToRemove | ConvertTo-Json -Compress) -ForegroundColor DarkGray
+        }
     }
 }
 
@@ -1589,6 +1760,7 @@ else {
 
 # Filled during processing and reported at the end
 $usedResourceTypesWithoutHook = [System.Collections.ArrayList]@()
+
 $signedInIdentity = $null
 if ($useSystemIdentity) {
     Write-HostOrOutput "Getting system-managed identity of the automation account..."
@@ -1621,7 +1793,7 @@ foreach ($sub in $allSubscriptions) {
             $roleAssignmentExists = @((Get-AzRoleAssignment -ObjectId $signedInIdentity.Id -Scope $subscriptionResourceId -RoleDefinitionName Contributor)).Count -gt 0
             if (!$roleAssignmentExists -and $PSCmdlet.ShouldProcess($subscriptionResourceId, "Assign Contributor role")) {
                 $tempRoleAssignment = New-AzRoleAssignment -ObjectId $signedInIdentity.Id -Scope $subscriptionResourceId -RoleDefinitionName Contributor `
-                    -Description "Temporary permission to create tags on resources and delete empty resource groups" -ErrorAction SilentlyContinue
+                    -Description "Temporary permission to create tags on resources and delete empty resource groups" -ErrorAction Continue
                 if ($tempRoleAssignment) {
                     Write-HostOrOutput "$($tab)$($WhatIfHint)Contributor role was temporarily assigned to the signed-in identity '$($ServicePrincipalCredential ? $signedInIdentity.ApplicationId : $signedInIdentity.UserPrincipalName)'" -ForegroundColor DarkGray
                 }
@@ -1693,7 +1865,7 @@ foreach ($sub in $allSubscriptions) {
                         # check activity log for relevant activity over the last 3 months (max.)
                         $activityLogs = Get-AzActivityLog -ResourceGroupName $resourceGroupName -StartTime (Get-Date -AsUTC).AddDays(-90) -EndTime (Get-Date -AsUTC)
                         $activelyUsed = $activityLogs | Where-Object { $_.Authorization.Action -imatch '^(?:(?!tags|roleAssignments).)*\/(write|action)$' }
-                        if (!$activelyUsed) {
+                        if ($null -eq $activelyUsed) {
                             Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Marking potentially unused resource group '$resourceGroupName' for deletion..." -ForegroundColor Yellow
                             Add-SubjectForDeletionTags -ResourceOrGroup $rg -SuppressHostOutput -WhatIf:$WhatIfPreference `
                                 -Reason "no deployments for $resourceGroupOldAfterDays days and no write/action activities for 3 months"
@@ -1710,9 +1882,14 @@ foreach ($sub in $allSubscriptions) {
                 $tags = $rg.Tags
                 $subjectForDeletionTagValue = ($tags.$subjectForDeletionTagName ?? '').Trim()
                 if (![string]::IsNullOrWhiteSpace($subjectForDeletionTagValue)) {
-                    $taggedResources = Search-AzGraph -Query "resources | where subscriptionId =~ '$($sub.SubscriptionId)' and resourceGroup =~ '$($rg.ResourceGroupName)' and tags contains '$($subjectForDeletionTagName)'"
-                    if ($taggedResources.Count -eq 0) {
-                        Remove-SubjectForDeletionTags -ResourceOrGroup $rg -WhatIf:$WhatIfPreference
+                    try {
+                        $groupResources = Get-AzResource -ResourceGroupName $resourceGroupName
+                        $suspectedResources = $groupResources | Where-Object { ($_.Tags.$subjectForDeletionTagName ?? '').Trim() -ilike "$([SubjectForDeletionStatus]::suspected.ToString())*" }
+                        if ($groupResources.Count -gt 0 -and $suspectedResources.Count -lt $groupResources.Count) {
+                            Remove-SubjectForDeletionTags -ResourceOrGroup $rg -WhatIf:$WhatIfPreference
+                        }
+                    } catch {
+                        Write-HostOrOutput "$($tab)$($tab)Failed to remove tags from resource group '$resourceGroupName': $($_.Exception.Message)" -ForegroundColor Red
                     }
                 }
             }
@@ -1802,7 +1979,15 @@ foreach ($sub in $allSubscriptions) {
 
             if ($hasMinimumAge) {
                 # Execute test hook for current resource type
-                $action, $reason = Invoke-Command -ScriptBlock $hook -ArgumentList $resource, $resources
+                $action = [ResourceAction]::none
+                $reason = ""
+                try {
+                    $action, $reason = Invoke-Command -ScriptBlock $hook -ArgumentList $resource, $resources
+                }
+                catch {
+                    $action = [ResourceAction]::none
+                    Write-HostOrOutput "$($tab)$($tab)Error in hook function '$hookFunctionName': $($_.Exception.Message)" -ForegroundColor Red
+                }
                 if ($action -eq [ResourceAction]::delete -and $AlwaysOnlyMarkForDeletion) {
                     $action = [ResourceAction]::markForDeletion
                 }
@@ -1830,7 +2015,7 @@ foreach ($sub in $allSubscriptions) {
             $usedResourceTypesWithoutHook.Add("Type: '$resourceTypeName' (hook name: 'Test-ResourceActionHook-$normalizedResourceTypeName')") | Out-Null
         }
 
-        # delete or mark resource accordingly
+        # delete or (un)mark resource accordingly
         switch ($action) {
             "markForDeletion" {
                 Write-HostOrOutput "$($tab)$($tab)$($WhatIfHint)Marking resource for deletion..."
@@ -1900,7 +2085,12 @@ foreach ($sub in $allSubscriptions) {
         # Process empty resource groups
         if (!$processedResourceGroups.Contains($rgname)) {
             # confirm that this resource group is really empty
-            $resourceCount = (Get-AzResource -ResourceGroupName $rgname).Count
+            $resourceCount = -1
+            try {
+                $resourceCount = (Get-AzResource -ResourceGroupName $rgname).Count
+            } catch {
+                Write-HostOrOutput "$($tab)$($tab)Error getting resources in resource group '$rgname': $($_.Exception.Message)" -ForegroundColor Red
+            }
             if ($resourceCount -eq 0) {
                 if ($AlwaysOnlyMarkForDeletion -or $DontDeleteEmptyResourceGroups) {
                     Write-HostOrOutput "$($tab)$($tab)--> action: " -NoNewline
@@ -1927,7 +2117,7 @@ foreach ($sub in $allSubscriptions) {
     Write-HostOrOutput "$($tab)$($tab)Done"
 
     if ($TryMakingUserContributorTemporarily -and $null -ne $tempRoleAssignment -and $PSCmdlet.ShouldProcess($tempRoleAssignment.Scope, "Remove Contributor role assignment")) {
-        Remove-AzRoleAssignment -InputObject $tempRoleAssignment -ErrorAction SilentlyContinue | Out-Null
+        Remove-AzRoleAssignment -InputObject $tempRoleAssignment -ErrorAction Continue | Out-Null
         Write-HostOrOutput "$($tab)$($WhatIfHint)Contributor role was removed again from the signed-in identity '$($ServicePrincipalCredential ? $signedInIdentity.ApplicationId : $signedInIdentity.UserPrincipalName)'" -ForegroundColor DarkGray
     }
 }
