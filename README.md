@@ -83,7 +83,7 @@ Example output:
 Example tags:
 ![Example tags](images/Screenshot4.png)
 
-The script was deliberately written in a single file to ensure ease of use. The log output is written to the host with colors to improve human readability.
+The script was intentionally written in a single file to ensure ease of use across various environments. The log output is written to the host using colors to improve human readability.
 
 The default values for some parameters can be specified in a config file named `Defaults.json`.
 
