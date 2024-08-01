@@ -81,7 +81,7 @@ again with the following special handling for status:
 Project Link: https://github.com/thgossler/AzSaveMoney
 Copyright (c) 2022-2024 Thomas Gossler
 License: MIT
-Tags: Azure, ResourceManagement, Automation, Cleanup, CostOptimization, PowerShell, UnusedResources, Tagging, Deletion, Scripting, Cloud, Infrastructure, ResourceTracking, Efficiency, Governance
+Tags: Azure, ResourceManagement, Automation, Cleanup, CostOptimization, ClimateProtection, PowerShell, UnusedResources, Tagging, Deletion, Scripting, Cloud, Infrastructure, ResourceTracking, Efficiency, Governance, FinOps
 
 .PARAMETER TenantId
 The ID of the Microsoft Entra ID tenant. Can be set in defaults config file.
