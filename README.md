@@ -105,7 +105,7 @@ The `SubjectForDeletion` tag has one of the following values after the script ra
 
 As long as the tag `SubjectForDeletion` has a value starting with `suspected...` the resource is reevaluated in every run and the tag value is updated (overwritten). You can update the tag value to one of the following values in order to influence the script behavior in subsequent runs (see below).
 
-Here is an example Azure Resource Graph query to show all resources which are tagged with SubjectForDeletion and are suspected to be unused:
+Here is a sample Azure Resource Graph query that identifies all resources suspected to be unused:
 
 ```kusto
 resources 
@@ -114,7 +114,7 @@ resources
 | sort by name asc 
 ```
 
-The following example process is suggested for large organizations:
+The following process is recommended for large organizations:
 
 1. **RUN** the script regularly
 2. **ALERT** `suspected` or `suspectedSubResources` resources to resource owners
@@ -142,7 +142,7 @@ Don't forget to give the project a star :wink: Thanks!
 
 ## Donate
 
-If you wish to use the tool but are unable to contribute, please consider donating an amount that reflects its value to you. You can do so either via PayPal
+If you are using the tool but are unable to contribute technically, please consider promoting it and donating an amount that reflects its value to you. You can do so either via PayPal
 
 [![Donate via PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=JVG7PFJ8DMW7J)
 
