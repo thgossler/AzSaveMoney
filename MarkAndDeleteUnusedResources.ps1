@@ -693,10 +693,15 @@ function Test-ResourceActionHook-microsoft-web-sites-app($Resource) {
     }
     if ($webApp.State -eq 'Stopped') {
         $lastModifiedTime = $webApp.SiteConfig.LastModifiedTimeUtc
-        $currentTime = (Get-Date).ToUniversalTime()
-        $timeDiff = $currentTime - $lastModifiedTime
-        if ($timeDiff.Days -gt $periodInDays) {
-            return [ResourceAction]::markForDeletion, "Web App has been stopped for more than $periodInDays days."
+        if ($null -eq $lastModifiedTime) {
+            $webApp.LastModifiedTimeUtc
+        }
+        if ($null -ne $lastModifiedTime) {
+            $currentTime = (Get-Date).ToUniversalTime()
+            $timeDiff = $currentTime - $lastModifiedTime
+            if ($timeDiff.Days -gt $periodInDays) {
+                return [ResourceAction]::markForDeletion, "Web App has been stopped for more than $periodInDays days."
+            }
         }
     }
     $cpuUtilization = Get-Metric -ResourceId $Resource.Id -MetricName 'CpuTime' -AggregationType 'Total' -PeriodInDays $periodInDays
@@ -1990,7 +1995,14 @@ foreach ($sub in $allSubscriptions) {
         # Process resource group
         $resourceGroupName = $resource.resourceGroup
         if (!$processedResourceGroups.Contains($resourceGroupName)) {
-            $rg = Get-AzResourceGroup -Name $resourceGroupName
+            $rg = $null
+            try {
+                $rg = Get-AzResourceGroup -Name $resourceGroupName
+            }
+            catch {
+                Write-HostOrOutput "$($tab)$($tab)Failed to get resource group '$resourceGroupName': $($_.Exception.Message)" -ForegroundColor Red
+                continue
+            }
             $rgJustTagged = $false
 
             if ($CheckForUnusedResourceGroups) {
@@ -2124,12 +2136,17 @@ foreach ($sub in $allSubscriptions) {
             # Only test resources which are existing long enough
             $hasMinimumAge = $true  # if creation time cannot be determined we assume age to be older than 30 days
             if ($MinimumResourceAgeInDaysForChecking -gt 0) {
-                $r = Get-AzResource -ResourceId $resource.id -ExpandProperties
-                $createdTime = $r.Properties.CreationTime
-                if ($null -ne $createdTime -and 
-                    (Get-Date -AsUTC).Subtract($createdTime) -lt [timespan]::FromDays($MinimumResourceAgeInDaysForChecking)) 
-                {
-                    $hasMinimumAge = $false
+                $r = $null
+                try {
+                    $r = Get-AzResource -ResourceId $resource.id -ExpandProperties
+                    $createdTime = $r.Properties.CreationTime
+                    if ($null -ne $createdTime -and 
+                    (Get-Date -AsUTC).Subtract($createdTime) -lt [timespan]::FromDays($MinimumResourceAgeInDaysForChecking)) {
+                        $hasMinimumAge = $false
+                    }
+                }
+                catch {
+                    Write-HostOrOutput "$($tab)$($tab)Error getting creation time of resource: $($_.Exception.Message)" -ForegroundColor Red
                 }
             }
 
