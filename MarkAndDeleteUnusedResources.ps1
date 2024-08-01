@@ -1921,7 +1921,7 @@ else {
 }
 
 # Filled during processing and reported at the end
-$usedResourceTypesWithoutHook = [System.Collections.ArrayList]@()
+$usedResourceTypesWithoutHook = @{}
 
 $signedInIdentity = $null
 if ($useSystemIdentity) {
@@ -2085,8 +2085,10 @@ foreach ($sub in $allSubscriptions) {
         # Call the resource type specific hook for testing unused characteristics of this resource
         $normalizedResourceTypeName = $resourceTypeName.Replace(".", "-").Replace("/", "-").Replace(",", "-").ToLower()
         $normalizedResourceKindName = $normalizedResourceTypeName
+        $hasKind = $false
         if (![String]::IsNullOrWhiteSpace($resourceKindName)) {
             $normalizedResourceKindName += "-$($resourceKindName.Replace(".", "-").Replace("/", "-").Replace(",", "-").ToLower())"
+            $hasKind = $true
         }
         $action = [ResourceAction]::none
         $reason = $null
@@ -2094,11 +2096,20 @@ foreach ($sub in $allSubscriptions) {
         $hookFunctionName = "Test-ResourceActionHook-" + $normalizedResourceKindName
         $hook = (Get-Command $hookFunctionName -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
         if ($null -eq $hook) {
-            if (![String]::IsNullOrWhiteSpace($resourceKindName)) {
-                $usedResourceTypesWithoutHook.Add("Type: '$resourceTypeName', Kind: '$resourceKindName' (hook name: 'Test-ResourceActionHook-$normalizedResourceKindName')") | Out-Null
+            if ($hasKind) {
+                $hookFunctionName = "Test-ResourceActionHook-" + $normalizedResourceTypeName
+                $hook = (Get-Command $hookFunctionName -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
             }
-            $hookFunctionName = "Test-ResourceActionHook-" + $normalizedResourceTypeName
-            $hook = (Get-Command $hookFunctionName -CommandType Function -ErrorAction SilentlyContinue).ScriptBlock
+            if ($null -eq $hook) {
+                Write-HostOrOutput "$($tab)$($tab)--> no matching test hook for this type of resource" -ForegroundColor DarkGray
+                # Log resource type and its kinds when there is no hook
+                if ($hasKind) {
+                    $entry = "Type: '$resourceTypeName', Kind: '$resourceKindName' (hook name: 'Test-ResourceActionHook-$normalizedResourceKindName')"
+                    $usedResourceTypesWithoutHook[$entry] = $true
+                }
+                $entry = "Type: '$resourceTypeName' (hook name: 'Test-ResourceActionHook-$normalizedResourceTypeName')"
+                $usedResourceTypesWithoutHook[$entry] = $true
+            }
         }
         if ($null -ne $hook) {
             
@@ -2190,10 +2201,6 @@ foreach ($sub in $allSubscriptions) {
             }
             Write-HostOrOutput $action.ToString() -ForegroundColor $color -NoNewline
             if (![string]::IsNullOrWhiteSpace($reason)) { Write-HostOrOutput " (reason: '$reason')" } else { Write-HostOrOutput "" }
-        }
-        else {
-            Write-HostOrOutput "$($tab)$($tab)--> no matching test hook for this type of resource" -ForegroundColor DarkGray
-            $usedResourceTypesWithoutHook.Add("Type: '$resourceTypeName' (hook name: 'Test-ResourceActionHook-$normalizedResourceTypeName')") | Out-Null
         }
 
         # Delete or (un)mark resource accordingly
@@ -2317,9 +2324,9 @@ if ($runningJobs.Count -gt 0) {
     }
 }
 
-if ($usedResourceTypesWithoutHook.Count -gt 0) {
-    Write-HostOrOutput "$([System.Environment]::NewLine)Discovered resource types without matching hook:"
-    foreach ($resourceType in ($usedResourceTypesWithoutHook | Sort-Object -Unique)) {
+if ($usedResourceTypesWithoutHook.Keys.Count -gt 0) {
+    Write-HostOrOutput "$([System.Environment]::NewLine)Discovered resource types (and their kinds) without matching hook:"
+    foreach ($resourceType in ($usedResourceTypesWithoutHook.Keys | Sort-Object)) {
         Write-HostOrOutput "$($tab)$resourceType"
     }
 }
